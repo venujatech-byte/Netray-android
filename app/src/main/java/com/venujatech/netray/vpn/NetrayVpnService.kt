@@ -56,13 +56,13 @@ class NetrayVpnService : VpnService() {
             android.util.Log.i("NetrayVpn", "Starting Xray")
             xray.start(profile.link, descriptor.fd)
             android.util.Log.i("NetrayVpn", "Xray started; checking tunnel connectivity")
-            val connection = (java.net.URL("https://cp.cloudflare.com/").openConnection() as java.net.HttpURLConnection).apply {
+            val connection = (java.net.URL("https://1.1.1.1/cdn-cgi/trace").openConnection() as java.net.HttpURLConnection).apply {
                 connectTimeout = 5000
                 readTimeout = 5000
                 useCaches = false
             }
-            val ready = connection.responseCode in 200..399
-            connection.disconnect()
+            // An IP endpoint avoids Android DNS lookup delays outside connectTimeout.
+            val ready = try { connection.responseCode in 200..399 } finally { connection.disconnect() }
             check(ready) { "Tunnel started but the connectivity check failed" }
             if (state.value is State.Stopping) { releaseTunnel(); return }
             android.util.Log.i("NetrayVpn", "Tunnel connectivity check passed")

@@ -3,7 +3,7 @@ package com.venujatech.netray
 /** Reads only this process; polling stops when the log dialog closes. */
 internal object ConnectionLogs {
     private val uuid = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,}")
-    private val endpoint = Regex("(?:[A-Za-z0-9-]+\\.)+[A-Za-z0-9-]+(?::[0-9]+)?")
+    private val endpoint = Regex("\\b(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::[0-9]+)?|\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}(?::[0-9]+)?")
 
     fun sanitize(line: String): String =
         if (line.contains("vless://", true) || line.contains('{')) "[Configuration details hidden]"

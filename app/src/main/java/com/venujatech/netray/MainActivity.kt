@@ -290,16 +290,16 @@ private fun NetrayScreen() {
         }
         AlertDialog(
             onDismissRequest = { showConnectionError = false },
-            title = { Text("Connection logs") },
+            title = { Text("Connection logs", color = Color.White) },
             text = {
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max = 440.dp)) {
                     items(logLines) { line ->
-                        Text(line, fontSize = 12.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        Text(line, color = Color(0xFFDEE5EF), fontSize = 14.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                             modifier = Modifier.padding(vertical = 3.dp))
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { showConnectionError = false }) { Text("Close") } },
+            confirmButton = { TextButton(onClick = { showConnectionError = false }) { Text("Close", color = Blue) } },
             containerColor = Card
         )
     }
