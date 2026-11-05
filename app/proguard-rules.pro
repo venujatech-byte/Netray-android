@@ -1,0 +1,2 @@
+-keep class libXray.** { *; }
+-keep class com.venujatech.netray.profiles.NativeBackend { *; }
