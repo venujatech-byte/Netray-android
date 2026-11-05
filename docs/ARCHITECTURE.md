@@ -11,7 +11,8 @@ ViewModels ── ProfileRepository ── app-private profile storage
           ▼
 NetrayVpnService (foreground service; sole tunnel owner)
           ├── Android VpnService.Builder → TUN ParcelFileDescriptor
-          ├── XrayEngine adapter → Xray/libXray, pending integration spike
+          ├── Rust JNI backend → profile validation and Xray TUN config
+          ├── libXray adapter → pinned Xray-core Go runtime
           ├── ConnectionSupervisor → readiness, process health, bounded reconnect
           └── TunnelStats / redacted log events → local state and usage history
 ```
@@ -42,7 +43,7 @@ Start with one Gradle app module and package boundaries. Extract a `core` module
 ### Xray integration
 
 - Define a narrow `XrayEngine` contract: validate/generate config, start with a TUN descriptor and callbacks, expose health/statistics, and stop/join.
-- Keep Xray-specific JSON generation and native calls behind the adapter. UI and ViewModels should not depend on Xray JSON.
+- Keep Xray-specific JSON generation in the Rust JNI backend and native calls behind the Kotlin adapter. UI and ViewModels should not depend on Xray JSON.
 - Run an early proof of concept using the official Xray Android integration route. Current Xray TUN documentation says Android receives the TUN file descriptor from the host app through `XRAY_TUN_FD`; determine the supported libXray API and ownership/duplication requirements before implementation.
 - Do not launch arbitrary shell commands or assume a desktop Xray executable works on Android. Decide between supported in-process bindings and an Android-compatible child process only after measuring ABI support, descriptor passing, lifecycle, crash handling, and license obligations.
 - Validate profiles before start. Generate temporary configs in private cache, avoid logging them, and remove them when the engine stops.
@@ -92,6 +93,7 @@ app/src/main/java/.../
   xray/                XrayEngine adapter and config conversion
   settings/             Preferences and settings screen
   diagnostics/          Redacted logs, health and traffic stats
+native/src/lib.rs       Rust JNI profile validation and TUN config generation
 ```
 
 Only split Gradle modules if there is a clear build or ownership benefit.

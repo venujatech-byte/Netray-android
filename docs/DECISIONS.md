@@ -36,3 +36,10 @@ Record decisions that change the app's security model, compatibility, runtime be
 - **Decision:** Store profiles locally in app-private storage; do not add accounts or cloud sync to MVP.
 - **Reason:** Profiles contain credentials and sync adds a remote security boundary not requested for the first release.
 - **Consequence:** Define Keystore-backed at-rest protection, backup exclusion, migrations, and export behavior before shipping profile persistence.
+
+## ADR 0006 — Rust native app backend; official Go Xray engine
+
+- **Status:** Accepted
+- **Decision:** Implement Netray's profile validation and Xray TUN config construction in Rust behind JNI. Keep Compose, VPN consent, the foreground service, and TUN descriptor ownership in Kotlin. Bundle official libXray for the Xray engine.
+- **Reason:** The owner requested a C or Rust backend; Rust provides the native backend while preserving Android platform ownership and Xray compatibility.
+- **Consequence:** Android builds require Rust targets, NDK, and cargo-ndk. Xray-core remains Go; this app does not reimplement it.

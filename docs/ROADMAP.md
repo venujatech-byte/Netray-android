@@ -1,6 +1,13 @@
 # Roadmap
 
-Each phase has an exit gate. Do not add UI breadth before the TUN-to-Xray path can be proven on a device.
+Each phase has an exit gate. The current project is an early prototype; device validation remains required before claiming reliable all-traffic routing.
+
+## Prototype status
+
+- Phase 1 has a Compose profile list, Gradle wrapper, Android VPN service scaffold, Rust JNI backend, and CI APK workflow.
+- VLESS URI validation and minimal TUN config generation have Rust unit tests.
+- Phase 2 has encrypted local profile storage and import; editing, QR, and migrations remain open.
+- Phase 3 has an initial Xray TUN integration and readiness probe. It still needs physical-device validation for descriptor ownership, DNS, IPv4/IPv6, UDP, revoke, reconnect, and vendor background behavior.
 
 ## Phase 0 — Validate integration choices
 

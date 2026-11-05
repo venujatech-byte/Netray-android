@@ -7,7 +7,7 @@ The app handles V2Ray profile credentials and can route device-wide traffic. Tre
 ## Required safeguards
 
 - Keep profiles in app-private storage; never include real profiles in assets, tests, CI, screenshots, issue reports, or git history.
-- Decide and document encryption at rest. Keep encryption keys in Android Keystore; do not hard-code keys or store a key beside encrypted profile data.
+- Keep profile data AES-GCM encrypted in app-private storage with its key generated in Android Keystore; never store the key beside ciphertext.
 - Exclude secrets from Android Auto Backup unless a reviewed encrypted backup design exists. Document restore behavior.
 - Redact credentials and sensitive URI parameters before logging. Prefer profile IDs and error categories over raw configs or full URLs.
 - Do not collect browsing destinations or app names by default. Keep diagnostics local and offer an explicit export path only after redaction.
@@ -25,6 +25,7 @@ Request only permissions needed for the implemented features. Explain VPN consen
 ## Xray and third-party licenses
 
 - Xray-core is distributed under MPL-2.0. Keep upstream license and notices with every binary distribution, record the exact version and source, and follow source availability/notice requirements for modified MPL files.
-- Before choosing XTLS/libXray or another wrapper, inspect its current license, generated/native artifacts, Android ABI support, build instructions, and transitive dependencies.
+- This app pins XTLS/libXray v26.10.31 (MIT) and the Xray-core source commit recorded by that release's `go.mod`; its build script places both upstream license texts in APK assets. The Xray source is at https://github.com/XTLS/Xray-core and libXray source at https://github.com/XTLS/libXray.
+- Review the generated Go module dependency licenses and final APK contents before publishing a release; the initial CI artifact is a debug build, not a release package.
 - Maintain a third-party inventory with component, version, license, upstream URL, modifications, and included notice. Verify it against the final APK/AAB.
 - Netray's license and Xray's license are separate. Do not remove, rewrite, or imply ownership of upstream notices.
