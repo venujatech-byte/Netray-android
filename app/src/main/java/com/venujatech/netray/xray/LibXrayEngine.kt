@@ -1,6 +1,9 @@
 package com.venujatech.netray.xray
 
 import android.net.VpnService
+import android.os.Build
+import libXray.LibXray
+import libXray.ProcessFinder
 import com.venujatech.netray.profiles.NativeBackend
 import org.json.JSONArray
 import org.json.JSONObject
@@ -21,6 +24,8 @@ class LibXrayEngine(private val service: VpnService) {
     }
 
     fun start(link: String, tunFd: Int) {
+        // libXray calls this handler during TUN traffic even without per-app routing.
+        LibXray.registerProcessFinder(ProcessFinder { _, _, _, _, _ -> -1L }, Build.VERSION.SDK_INT.toLong())
         api.getMethod("registerDialerController", controller).invoke(null, callback)
         api.getMethod("setDNS", controller, String::class.java).invoke(null, callback, "1.1.1.1:53")
         val converted = invoke("convertShareLinksToXrayJson", JSONObject().put("text", link)).getJSONObject("data")
