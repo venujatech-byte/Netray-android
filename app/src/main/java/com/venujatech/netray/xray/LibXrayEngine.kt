@@ -2,6 +2,7 @@ package com.venujatech.netray.xray
 
 import android.net.VpnService
 import android.os.Build
+import libXray.DialerController
 import libXray.LibXray
 import libXray.ProcessFinder
 import com.venujatech.netray.profiles.NativeBackend
@@ -37,7 +38,8 @@ class LibXrayEngine(private val service: VpnService) {
     fun stop() {
         runCatching { invoke("stopXray", JSONObject()) }
         runCatching { api.getMethod("resetDNS").invoke(null) }
-        runCatching { api.getMethod("registerDialerController", controller).invoke(null, null) }
+        // Pending Go dialers may outlive stopXray; a null callback can panic.
+        runCatching { LibXray.registerDialerController(DialerController { false }) }
     }
 
     private fun invoke(method: String, payload: JSONObject): JSONObject {
