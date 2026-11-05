@@ -5,3 +5,5 @@ local.properties
 *.keystore
 app/libs/
 app/src/main/jniLibs/
+app/src/main/assets/licenses/
+native/target/
