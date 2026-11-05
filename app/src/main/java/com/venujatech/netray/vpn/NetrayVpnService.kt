@@ -35,6 +35,7 @@ class NetrayVpnService : VpnService() {
         } ?: return START_NOT_STICKY
         if (state.value is State.Connected || state.value is State.Connecting || state.value is State.Stopping) return START_STICKY
         getSharedPreferences(STATE_PREFS, MODE_PRIVATE).edit().putString(EXTRA_PROFILE, profileId).apply()
+        android.util.Log.i("NetrayVpn", "Connection requested")
         state.value = State.Connecting
         startForeground(NOTIFICATION_ID, notification("Connecting"))
         worker.execute { connect(profileId) }
@@ -48,10 +49,13 @@ class NetrayVpnService : VpnService() {
                 .addAddress("10.0.0.2", 30).addRoute("0.0.0.0", 0).addDnsServer("1.1.1.1")
                 .addAddress("fd00::2", 126).addRoute("::", 0).addDnsServer("2606:4700:4700::1111")
                 .establish() ?: error("Android did not establish the VPN")
+            android.util.Log.i("NetrayVpn", "Android VPN interface established")
             tun = descriptor
             val xray = LibXrayEngine(this)
             engine = xray
+            android.util.Log.i("NetrayVpn", "Starting Xray")
             xray.start(profile.link, descriptor.fd)
+            android.util.Log.i("NetrayVpn", "Xray started; checking tunnel connectivity")
             val connection = (java.net.URL("https://cp.cloudflare.com/").openConnection() as java.net.HttpURLConnection).apply {
                 connectTimeout = 5000
                 readTimeout = 5000
@@ -61,10 +65,13 @@ class NetrayVpnService : VpnService() {
             connection.disconnect()
             check(ready) { "Tunnel started but the connectivity check failed" }
             if (state.value is State.Stopping) { releaseTunnel(); return }
+            android.util.Log.i("NetrayVpn", "Tunnel connectivity check passed")
             state.value = State.Connected
             connectedAt = android.os.SystemClock.elapsedRealtime()
             updateNotification("Connected")
         } catch (e: Exception) {
+            android.util.Log.e("NetrayVpn", "Connection failed: " + (e.cause ?: e).javaClass.simpleName)
+            android.util.Log.e("NetrayVpn", com.venujatech.netray.ConnectionLogs.sanitize(e.cause?.message ?: e.message ?: "Unknown error"))
             releaseTunnel()
             if (state.value !is State.Stopping) {
                 state.value = State.Error(e.cause?.message ?: e.message ?: "Could not start VPN")
@@ -74,6 +81,7 @@ class NetrayVpnService : VpnService() {
     }
 
     private fun stopTunnel() {
+        android.util.Log.i("NetrayVpn", "Disconnect requested; stopping Xray and closing VPN")
         state.value = State.Stopping
         worker.execute {
             getSharedPreferences(STATE_PREFS, MODE_PRIVATE).edit().remove(EXTRA_PROFILE).apply()

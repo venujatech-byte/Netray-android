@@ -183,8 +183,7 @@ private fun NetrayScreen() {
                         is NetrayVpnService.State.Error -> "CONNECTION ERROR"
                         else -> "DISCONNECTED"
                     }
-                    val failure = (state as? NetrayVpnService.State.Error)?.message
-                    Text("●  $status", Modifier.weight(1f).clickable(enabled = failure != null) { showConnectionError = true }, color = if (vpn) Green else Muted, fontSize = 13.sp)
+                    Text("●  $status", Modifier.weight(1f).clickable { showConnectionError = true }, color = if (vpn) Green else Muted, fontSize = 13.sp)
                     Box(Modifier.size(64.dp).background(Blue, CircleShape).clickable(enabled = !busy && (vpn || selectedProfile != null)) {
                         if (vpn) startTunnel(context, null, disconnect = true)
                         else if (android.os.Build.VERSION.SDK_INT >= 33 &&
@@ -279,13 +278,32 @@ private fun NetrayScreen() {
         containerColor = Card
     )
 
-    if (showConnectionError) AlertDialog(
-        onDismissRequest = { showConnectionError = false },
-        title = { Text("Connection failed") },
-        text = { Text("Netray could not start the VPN. Check the selected profile and try again. Detailed configuration values are hidden to protect your server credentials.") },
-        confirmButton = { TextButton(onClick = { showConnectionError = false }) { Text("OK") } },
-        containerColor = Card
-    )
+    if (showConnectionError) {
+        var logLines by remember { mutableStateOf(listOf("Loading connection logs…")) }
+        LaunchedEffect(Unit) {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    logLines = withContext(Dispatchers.IO) { ConnectionLogs.read() }
+                    delay(2000)
+                }
+            }
+        }
+        AlertDialog(
+            onDismissRequest = { showConnectionError = false },
+            title = { Text("Connection logs") },
+            text = {
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 440.dp)) {
+                    items(logLines) { line ->
+                        Text(line, fontSize = 12.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            modifier = Modifier.padding(vertical = 3.dp))
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showConnectionError = false }) { Text("Close") } },
+            containerColor = Card
+        )
+    }
+
 }
 
 @Composable
