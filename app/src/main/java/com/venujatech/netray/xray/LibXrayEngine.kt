@@ -32,6 +32,7 @@ class LibXrayEngine(private val service: VpnService) {
         api.getMethod("setDNS", controller, String::class.java).invoke(null, callback, "1.1.1.1:53")
         val converted = invoke("convertShareLinksToXrayJson", JSONObject().put("text", link)).getJSONObject("data")
         val outbounds = converted.getJSONArray("outbounds")
+        val allowInsecure = service.getSharedPreferences("settings", 0).getBoolean("allow_insecure_tls", false)
         val uri = Uri.parse(link)
         val host = uri.host.orEmpty()
         for (index in 0 until outbounds.length()) {
@@ -48,8 +49,7 @@ class LibXrayEngine(private val service: VpnService) {
                 tls.put("verifyPeerCertByName", host)
             }
             if (!pin.isNullOrBlank()) tls.put("pinnedPeerCertSha256", pin)
-            // This core rejects the removed field; certificate-name/pin settings replace it.
-            tls.remove("allowInsecure")
+            tls.put("allowInsecure", allowInsecure)
         }
         val config = JSONObject(NativeBackend.buildTunConfig(outbounds.toString(), tunFd))
         require(!config.has("error")) { config.optString("error", "Could not prepare Xray config") }

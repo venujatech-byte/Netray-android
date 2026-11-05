@@ -75,6 +75,9 @@ private fun NetrayScreen() {
     var editLink by remember { mutableStateOf("") }
     var editError by remember { mutableStateOf("") }
     var menuExpanded by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
+    val settings = remember { context.getSharedPreferences("settings", 0) }
+    var allowInsecureTls by remember { mutableStateOf(settings.getBoolean("allow_insecure_tls", false)) }
     var showAbout by remember { mutableStateOf(false) }
     var showConnectionError by remember { mutableStateOf(false) }
     var uptime by remember { mutableLongStateOf(0) }
@@ -126,6 +129,7 @@ private fun NetrayScreen() {
                             modifier = Modifier.semantics { contentDescription = "Open menu" }.clickable { menuExpanded = true }.padding(end = 16.dp))
                         DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                             DropdownMenuItem(text = { Text("Import VLESS link") }, onClick = { menuExpanded = false; showImport = true })
+                            DropdownMenuItem(text = { Text("Settings") }, onClick = { menuExpanded = false; showSettings = true })
                             DropdownMenuItem(text = { Text("About Netray") }, onClick = { menuExpanded = false; showAbout = true })
                         }
                     }
@@ -269,6 +273,23 @@ private fun NetrayScreen() {
         dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } },
         containerColor = Card
     ) }
+
+    if (showSettings) AlertDialog(
+        onDismissRequest = { showSettings = false },
+        title = { Text("Settings", color = Color.White) },
+        text = { Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Allow insecure (TLS)", color = Color.White, modifier = Modifier.weight(1f))
+                Switch(checked = allowInsecureTls, enabled = !vpn && !busy, onCheckedChange = {
+                    allowInsecureTls = it
+                    settings.edit().putBoolean("allow_insecure_tls", it).apply()
+                })
+            }
+            Text("Skips server certificate verification. Turn off for verified TLS. Disconnect before changing this setting.", color = Muted)
+        } },
+        confirmButton = { TextButton(onClick = { showSettings = false }) { Text("Close", color = Blue) } },
+        containerColor = Card
+    )
 
     if (showAbout) AlertDialog(
         onDismissRequest = { showAbout = false },
