@@ -30,7 +30,7 @@ kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarg
 val buildLibXray by tasks.registering(Exec::class) {
     val aar = layout.projectDirectory.file("libs/libXray.aar").asFile
     val marker = layout.projectDirectory.file("libs/libXray.version").asFile
-    onlyIf { !aar.exists() || !marker.exists() || marker.readText().trim() != "v26.10.31" ||
+    onlyIf { !aar.exists() || !marker.exists() || marker.readText().trim() != "v26.10.31-netray-tls1" ||
         !file("src/main/assets/licenses/libxray-MIT.txt").exists() || !file("src/main/assets/licenses/xray-MPL-2.0.txt").exists() }
     workingDir(rootProject.projectDir)
     commandLine("bash", "scripts/build-libxray.sh")
