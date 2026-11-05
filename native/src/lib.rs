@@ -118,7 +118,12 @@ pub extern "system" fn Java_com_venujatech_netray_profiles_NativeBackend_buildTu
         .get_string(&outbounds)
         .map_err(|_| "Invalid Xray outbounds")
         .and_then(|value| build_tun_config(value.to_str().unwrap_or_default(), tun_fd));
-    env.new_string(result_json(response))
+    // The success value is already JSON; wrapping it as a JSON string breaks Kotlin's object parser.
+    let output = match response {
+        Ok(config) => config,
+        Err(error) => serde_json::json!({"error": error}).to_string(),
+    };
+    env.new_string(output)
         .expect("JNI string allocation failed")
         .into_raw()
 }
