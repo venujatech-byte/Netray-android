@@ -6,4 +6,4 @@
 
 The desktop and Android Netray code does not replace these upstream notices. Xray-core is a separate work under MPL-2.0; its source and license remain available at the upstream link above.
 
-Netray modifies Xray-core to restore explicit `allowInsecure` support. The default remains certificate verification. The patch is in `scripts/patch-xray-tls.py`; the complete modified MPL-2.0 source is bundled in APK assets at `licenses/xray-source.tar.gz`. Rebuild with `scripts/build-libxray.sh`.
+Netray modifies Xray-core to restore explicit `allowInsecure` support. The default remains certificate verification. The patch is in `scripts/patch-xray-tls.py`; the complete modified MPL-2.0 source is bundled in APK assets at `licenses/xray-source.tar` (decompressed by Android packaging). Rebuild with `scripts/build-libxray.sh`.
