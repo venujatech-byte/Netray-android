@@ -1,6 +1,7 @@
 package com.venujatech.netray.xray
 
 import android.net.VpnService
+import android.net.Uri
 import android.os.Build
 import libXray.DialerController
 import libXray.LibXray
@@ -30,7 +31,27 @@ class LibXrayEngine(private val service: VpnService) {
         api.getMethod("registerDialerController", controller).invoke(null, callback)
         api.getMethod("setDNS", controller, String::class.java).invoke(null, callback, "1.1.1.1:53")
         val converted = invoke("convertShareLinksToXrayJson", JSONObject().put("text", link)).getJSONObject("data")
-        val config = JSONObject(NativeBackend.buildTunConfig(converted.getJSONArray("outbounds").toString(), tunFd))
+        val outbounds = converted.getJSONArray("outbounds")
+        val uri = Uri.parse(link)
+        val host = uri.host.orEmpty()
+        for (index in 0 until outbounds.length()) {
+            val stream = outbounds.getJSONObject(index).optJSONObject("streamSettings") ?: continue
+            if (stream.optString("security") != "tls") continue
+            val tls = stream.optJSONObject("tlsSettings") ?: JSONObject().also { stream.put("tlsSettings", it) }
+            val sni = tls.optString("serverName", host)
+            val verifyName = uri.getQueryParameter("vcn") ?: uri.getQueryParameter("verifyPeerCertByName")
+            val pin = uri.getQueryParameter("pcs") ?: uri.getQueryParameter("pinnedPeerCertSha256")
+            if (!verifyName.isNullOrBlank()) tls.put("verifyPeerCertByName", verifyName)
+            else if (!tls.has("verifyPeerCertByName") && host.isNotBlank() && sni != host &&
+                !host.contains(':') && !host.matches(Regex("[0-9.]+"))) {
+                // Match desktop: preserve SNI while verifying against the server's DNS name.
+                tls.put("verifyPeerCertByName", host)
+            }
+            if (!pin.isNullOrBlank()) tls.put("pinnedPeerCertSha256", pin)
+            // This core rejects the removed field; certificate-name/pin settings replace it.
+            tls.remove("allowInsecure")
+        }
+        val config = JSONObject(NativeBackend.buildTunConfig(outbounds.toString(), tunFd))
         require(!config.has("error")) { config.optString("error", "Could not prepare Xray config") }
         invoke("runXray", JSONObject().put("xrayJson", config.toString()))
     }
