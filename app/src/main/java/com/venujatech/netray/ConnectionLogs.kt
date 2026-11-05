@@ -11,7 +11,7 @@ internal object ConnectionLogs {
 
     fun read(): List<String> = runCatching {
         val process = ProcessBuilder("logcat", "-d", "-t", "200", "--pid=${android.os.Process.myPid()}",
-            "-v", "time", "NetrayVpn:V", "GoLog:W", "Go:E", "AndroidRuntime:E", "*:S")
+            "-v", "time", "NetrayVpn:V", "GoLog:I", "Go:E", "AndroidRuntime:E", "*:S")
             .redirectErrorStream(true).start()
         try {
             process.inputStream.bufferedReader().useLines { lines ->

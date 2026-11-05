@@ -73,7 +73,7 @@ fn build_tun_config(outbounds: &str, tun_fd: i32) -> Result<String, &'static str
         .and_then(serde_json::Value::as_str)
         .ok_or("Xray outbound tag is missing")?;
     let config = serde_json::json!({
-        "log": { "loglevel": "warning" },
+        "log": { "loglevel": "info", "access": "none" },
         "env": { "xray.tun.fd": tun_fd.to_string() },
         "inbounds": [{
             "tag": "tun-in", "protocol": "tun",
