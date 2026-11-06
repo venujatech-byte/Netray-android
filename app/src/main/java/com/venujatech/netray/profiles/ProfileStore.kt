@@ -23,10 +23,14 @@ class ProfileStore(context: Context) {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, encrypted.copyOfRange(1, 13)))
         val rows = JSONArray(cipher.doFinal(encrypted.copyOfRange(13, encrypted.size)).toString(Charsets.UTF_8))
-        return List(rows.length()) { i ->
+        val list = mutableListOf<Profile>()
+        for (i in 0 until rows.length()) {
             val row = rows.getJSONObject(i)
-            Profile.parse(row.getString("link")).copy(id = row.getString("id"))
+            runCatching {
+                Profile.parse(row.getString("link")).copy(id = row.getString("id"))
+            }.onSuccess { list.add(it) }
         }
+        return list
     }
 
     fun save(profiles: List<Profile>) {

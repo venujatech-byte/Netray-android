@@ -64,22 +64,22 @@ private fun NetrayScreen() {
     val pingResults = remember { mutableStateMapOf<String, String>() }
     val pinging = remember { mutableStateMapOf<String, Boolean>() }
     var selectedId by rememberSaveable { mutableStateOf("") }
-    var showImport by remember { mutableStateOf(false) }
-    var link by remember { mutableStateOf("") }
-    var importError by remember { mutableStateOf("") }
+    var showImport by rememberSaveable { mutableStateOf(false) }
+    var link by rememberSaveable { mutableStateOf("") }
+    var importError by rememberSaveable { mutableStateOf("") }
     var storageError by remember { mutableStateOf("") }
     var storeReady by remember { mutableStateOf(false) }
-    var notificationError by remember { mutableStateOf("") }
+    var notificationError by rememberSaveable { mutableStateOf("") }
     var deleteTarget by remember { mutableStateOf<Profile?>(null) }
     var editTarget by remember { mutableStateOf<Profile?>(null) }
-    var editLink by remember { mutableStateOf("") }
-    var editError by remember { mutableStateOf("") }
+    var editLink by rememberSaveable { mutableStateOf("") }
+    var editError by rememberSaveable { mutableStateOf("") }
     var menuExpanded by remember { mutableStateOf(false) }
-    var showSettings by remember { mutableStateOf(false) }
+    var showSettings by rememberSaveable { mutableStateOf(false) }
     val settings = remember { context.getSharedPreferences("settings", 0) }
     var allowInsecureTls by remember { mutableStateOf(settings.getBoolean("allow_insecure_tls", false)) }
-    var showAbout by remember { mutableStateOf(false) }
-    var showConnectionError by remember { mutableStateOf(false) }
+    var showAbout by rememberSaveable { mutableStateOf(false) }
+    var showConnectionError by rememberSaveable { mutableStateOf(false) }
     var uptime by remember { mutableLongStateOf(0) }
     val state by NetrayVpnService.state.collectAsStateWithLifecycle()
     val vpn = state is NetrayVpnService.State.Connected
@@ -105,7 +105,7 @@ private fun NetrayScreen() {
         }
     }
 
-    var pendingProfileId by remember { mutableStateOf("") }
+    var pendingProfileId by rememberSaveable { mutableStateOf("") }
     val consent = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK && pendingProfileId.isNotBlank()) startTunnel(context, pendingProfileId)
         pendingProfileId = ""
@@ -305,7 +305,7 @@ private fun NetrayScreen() {
             lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 while (true) {
                     logLines = withContext(Dispatchers.IO) { ConnectionLogs.read() }
-                    delay(2000)
+                    delay(3000)
                 }
             }
         }

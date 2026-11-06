@@ -37,7 +37,11 @@ class NetrayVpnService : VpnService() {
         getSharedPreferences(STATE_PREFS, MODE_PRIVATE).edit().putString(EXTRA_PROFILE, profileId).apply()
         android.util.Log.i("NetrayVpn", "Connection requested")
         state.value = State.Connecting
-        startForeground(NOTIFICATION_ID, notification("Connecting"))
+        if (Build.VERSION.SDK_INT >= 34) {
+            startForeground(NOTIFICATION_ID, notification("Connecting"), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(NOTIFICATION_ID, notification("Connecting"))
+        }
         worker.execute { connect(profileId) }
         return START_STICKY
     }
@@ -115,8 +119,11 @@ class NetrayVpnService : VpnService() {
         if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(NotificationChannel(CHANNEL, "VPN connection", NotificationManager.IMPORTANCE_LOW))
         val disconnect = Intent(this, NetrayVpnService::class.java).setAction(ACTION_DISCONNECT)
         val pending = android.app.PendingIntent.getService(this, 1, disconnect, android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE)
+        val openApp = Intent(this, com.venujatech.netray.MainActivity::class.java)
+        val contentPending = android.app.PendingIntent.getActivity(this, 0, openApp, android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_vpn_status)
             .setContentTitle("Netray").setContentText(status).setOngoing(true)
+            .setContentIntent(contentPending)
             .addAction(0, "Disconnect", pending).build()
     }
 
