@@ -13,6 +13,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -42,6 +45,7 @@ import com.venujatech.netray.profiles.Profile
 import com.venujatech.netray.profiles.ProfileStore
 import com.venujatech.netray.ui.AboutScreen
 import com.venujatech.netray.ui.CheckIpScreen
+import com.venujatech.netray.ui.LogsScreen
 import com.venujatech.netray.ui.SettingsScreen
 import com.venujatech.netray.ui.theme.NetrayTheme
 import com.venujatech.netray.vpn.NetrayVpnService
@@ -87,7 +91,6 @@ private fun NetrayScreen() {
     var menuExpanded by remember { mutableStateOf(false) }
     val settings = remember { context.getSharedPreferences("settings", 0) }
     var themeMode by rememberSaveable { mutableStateOf(settings.getString("theme_mode", "system") ?: "system") }
-    var showConnectionError by rememberSaveable { mutableStateOf(false) }
     var uptime by remember { mutableLongStateOf(0) }
     val state by NetrayVpnService.state.collectAsStateWithLifecycle()
     val vpn = state is NetrayVpnService.State.Connected
@@ -144,7 +147,7 @@ private fun NetrayScreen() {
         ModalNavigationDrawer(
             drawerState = drawerState,
             drawerContent = {
-                ModalDrawerSheet {
+                ModalDrawerSheet(modifier = Modifier.width(280.dp)) {
                     Spacer(Modifier.height(16.dp))
                     Row(
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
@@ -167,6 +170,13 @@ private fun NetrayScreen() {
                         label = { Text("Servers") },
                         selected = currentScreen == "servers",
                         onClick = { currentScreen = "servers"; scope.launch { drawerState.close() } },
+                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                    )
+                    NavigationDrawerItem(
+                        icon = { Icon(painterResource(R.drawable.ic_lucide_file_text), contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        label = { Text("Logs") },
+                        selected = currentScreen == "logs",
+                        onClick = { currentScreen = "logs"; scope.launch { drawerState.close() } },
                         modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                     )
                     NavigationDrawerItem(
@@ -194,6 +204,10 @@ private fun NetrayScreen() {
             }
         ) {
             when (currentScreen) {
+                "logs" -> LogsScreen(
+                    onOpenDrawer = { scope.launch { drawerState.open() } },
+                    onBack = { currentScreen = "servers" }
+                )
                 "check_ip" -> CheckIpScreen(
                     onOpenDrawer = { scope.launch { drawerState.open() } },
                     vpnConnected = vpn
@@ -207,14 +221,31 @@ private fun NetrayScreen() {
                         settings.edit().putString("theme_mode", mode).apply()
                     },
                     vpnBusy = vpn || busy,
-                    onViewLogs = { showConnectionError = true }
+                    onViewLogs = { currentScreen = "logs" }
                 )
                 "about" -> AboutScreen(
                     onOpenDrawer = { scope.launch { drawerState.open() } }
                 )
                 else -> {
+                    var swipeDrag by remember { mutableFloatStateOf(0f) }
                     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 18.dp)) {
+                        Column(
+                            Modifier
+                                .fillMaxSize()
+                                .statusBarsPadding()
+                                .navigationBarsPadding()
+                                .padding(horizontal = 18.dp)
+                                .draggable(
+                                    orientation = Orientation.Horizontal,
+                                    state = rememberDraggableState { delta -> swipeDrag += delta },
+                                    onDragStopped = { velocity ->
+                                        if (swipeDrag > 60f || swipeDrag < -60f || velocity > 300f || velocity < -300f) {
+                                            currentScreen = "logs"
+                                        }
+                                        swipeDrag = 0f
+                                    }
+                                )
+                        ) {
                             Row(Modifier.fillMaxWidth().height(60.dp), verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(
                                     onClick = { scope.launch { drawerState.open() } },
@@ -331,7 +362,7 @@ private fun NetrayScreen() {
                                 }
                                 Text(
                                     text = "●  $status",
-                                    modifier = Modifier.weight(1f).clickable { showConnectionError = true },
+                                    modifier = Modifier.weight(1f).clickable { currentScreen = "logs" },
                                     color = if (vpn) Green else Muted,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Medium
@@ -441,32 +472,6 @@ private fun NetrayScreen() {
         dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } },
         containerColor = Card
     ) }
-
-    if (showConnectionError) {
-        var logLines by remember { mutableStateOf(listOf("Loading connection logs…")) }
-        LaunchedEffect(Unit) {
-            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                while (true) {
-                    logLines = withContext(Dispatchers.IO) { ConnectionLogs.read() }
-                    delay(3000)
-                }
-            }
-        }
-        AlertDialog(
-            onDismissRequest = { showConnectionError = false },
-            title = { Text("Connection logs", color = Color.White) },
-            text = {
-                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 440.dp)) {
-                    items(logLines) { line ->
-                        Text(line, color = Color(0xFFDEE5EF), fontSize = 14.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                            modifier = Modifier.padding(vertical = 3.dp))
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showConnectionError = false }) { Text("Close", color = Blue) } },
-            containerColor = Card
-        )
-    }
 
 }
 
