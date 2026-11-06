@@ -5,9 +5,11 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,8 +23,11 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -35,6 +40,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.venujatech.netray.profiles.Profile
 import com.venujatech.netray.profiles.ProfileStore
+import com.venujatech.netray.ui.AboutScreen
+import com.venujatech.netray.ui.CheckIpScreen
+import com.venujatech.netray.ui.SettingsScreen
+import com.venujatech.netray.ui.theme.NetrayTheme
 import com.venujatech.netray.vpn.NetrayVpnService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -55,6 +64,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NetrayScreen() {
     val context = LocalContext.current
@@ -75,16 +85,26 @@ private fun NetrayScreen() {
     var editLink by rememberSaveable { mutableStateOf("") }
     var editError by rememberSaveable { mutableStateOf("") }
     var menuExpanded by remember { mutableStateOf(false) }
-    var showSettings by rememberSaveable { mutableStateOf(false) }
     val settings = remember { context.getSharedPreferences("settings", 0) }
-    var allowInsecureTls by remember { mutableStateOf(settings.getBoolean("allow_insecure_tls", false)) }
-    var showAbout by rememberSaveable { mutableStateOf(false) }
+    var themeMode by rememberSaveable { mutableStateOf(settings.getString("theme_mode", "system") ?: "system") }
     var showConnectionError by rememberSaveable { mutableStateOf(false) }
     var uptime by remember { mutableLongStateOf(0) }
     val state by NetrayVpnService.state.collectAsStateWithLifecycle()
     val vpn = state is NetrayVpnService.State.Connected
     val busy = state is NetrayVpnService.State.Connecting || state is NetrayVpnService.State.Stopping
     val selectedProfile = profiles.firstOrNull { it.id == selectedId }
+
+    var currentScreen by rememberSaveable { mutableStateOf("servers") }
+    var selectedMode by rememberSaveable { mutableIntStateOf(0) }
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+
+    BackHandler(enabled = drawerState.isOpen || currentScreen != "servers") {
+        if (drawerState.isOpen) {
+            scope.launch { drawerState.close() }
+        } else {
+            currentScreen = "servers"
+        }
+    }
 
     LaunchedEffect(Unit) {
         runCatching { withContext(Dispatchers.IO) { store.load() } }
@@ -120,82 +140,230 @@ private fun NetrayScreen() {
         else notificationError = "Allow notifications so Android can show the VPN's background status."
     }
 
-    MaterialTheme(colorScheme = darkColorScheme(background = Background, surface = Card, primary = Blue, onBackground = Color.White, onSurface = Color.White)) {
-        Surface(Modifier.fillMaxSize(), color = Background) {
-            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 18.dp)) {
-                Row(Modifier.fillMaxWidth().height(60.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box {
-                        Text("☰", color = Color.White, fontSize = 24.sp,
-                            modifier = Modifier.semantics { contentDescription = "Open menu" }.clickable { menuExpanded = true }.padding(end = 16.dp))
-                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                            DropdownMenuItem(text = { Text("Import VLESS link") }, onClick = { menuExpanded = false; showImport = true })
-                            DropdownMenuItem(text = { Text("Settings") }, onClick = { menuExpanded = false; showSettings = true })
-                            DropdownMenuItem(text = { Text("About Netray") }, onClick = { menuExpanded = false; showAbout = true })
+    NetrayTheme(themeMode = themeMode) {
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            drawerContent = {
+                ModalDrawerSheet {
+                    Spacer(Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Image(
+                            painter = painterResource(R.drawable.netray_logo),
+                            contentDescription = "Netray logo",
+                            modifier = Modifier.size(52.dp).clip(CircleShape)
+                        )
+                        Spacer(Modifier.width(16.dp))
+                        Column {
+                            Text("Netray", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text("v0.1.0", style = MaterialTheme.typography.bodySmall, color = Muted)
                         }
                     }
-                    Box(Modifier.size(34.dp).background(Color(0xFF171C25), CircleShape), contentAlignment = Alignment.Center) {
-                        Text("N", color = Blue, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Text("Netray", Modifier.padding(start = 12.dp).weight(1f), fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
-                    Text("＋", color = Color.White, fontSize = 25.sp,
-                        modifier = Modifier.semantics { contentDescription = "Add VLESS profile" }.clickable(enabled = storeReady) { showImport = true }.padding(horizontal = 10.dp, vertical = 8.dp))
-                    Box {
-                        Text("⋮", color = Color.White, fontSize = 24.sp,
-                            modifier = Modifier.semantics { contentDescription = "More options" }.clickable { menuExpanded = true }.padding(horizontal = 6.dp, vertical = 8.dp))
-                    }
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+                    NavigationDrawerItem(
+                        icon = { Icon(painterResource(R.drawable.ic_lucide_server), contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        label = { Text("Servers") },
+                        selected = currentScreen == "servers",
+                        onClick = { currentScreen = "servers"; scope.launch { drawerState.close() } },
+                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                    )
+                    NavigationDrawerItem(
+                        icon = { Icon(painterResource(R.drawable.ic_lucide_globe), contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        label = { Text("Check IP") },
+                        selected = currentScreen == "check_ip",
+                        onClick = { currentScreen = "check_ip"; scope.launch { drawerState.close() } },
+                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                    )
+                    NavigationDrawerItem(
+                        icon = { Icon(painterResource(R.drawable.ic_lucide_settings), contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        label = { Text("Settings") },
+                        selected = currentScreen == "settings",
+                        onClick = { currentScreen = "settings"; scope.launch { drawerState.close() } },
+                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                    )
+                    NavigationDrawerItem(
+                        icon = { Icon(painterResource(R.drawable.ic_lucide_info), contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        label = { Text("About") },
+                        selected = currentScreen == "about",
+                        onClick = { currentScreen = "about"; scope.launch { drawerState.close() } },
+                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                    )
                 }
-                Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    ModeChip("☑  TUN", selected = true)
-                    Spacer(Modifier.width(6.dp))
-                    ModeChip("□  Proxy", selected = false)
-                    Spacer(Modifier.width(6.dp))
-                    Spacer(Modifier.weight(1f))
-                    Text(if (vpn) "Tunnel active" else if (busy) "Connecting" else "Offline", color = if (vpn) Green else Muted, fontSize = 12.sp)
-                }
-                if (storageError.isNotEmpty()) Text(storageError, color = Color(0xFFFF807D), fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
-                LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
-                    items(profiles, key = { it.id }) { profile ->
-                        ProfileCard(profile, selected = profile.id == selectedId, connected = vpn || busy, storeReady = storeReady,
-                            pingResult = pingResults[profile.id], pinging = pinging[profile.id] == true,
-                            onPing = {
-                                if (pinging[profile.id] != true) scope.launch {
-                                    pinging[profile.id] = true
-                                    pingResults.remove(profile.id)
-                                    val result = withContext(Dispatchers.IO) {
-                                        runCatching {
-                                            val start = android.os.SystemClock.elapsedRealtime()
-                                            java.net.Socket().use { it.connect(java.net.InetSocketAddress(profile.server, profile.port), 3000) }
-                                            "TCP ${android.os.SystemClock.elapsedRealtime() - start} ms"
-                                        }.getOrElse { "Failed" }
-                                    }
-                                    pingResults[profile.id] = result
-                                    pinging[profile.id] = false
+            }
+        ) {
+            when (currentScreen) {
+                "check_ip" -> CheckIpScreen(
+                    onOpenDrawer = { scope.launch { drawerState.open() } },
+                    vpnConnected = vpn
+                )
+                "settings" -> SettingsScreen(
+                    onOpenDrawer = { scope.launch { drawerState.open() } },
+                    settings = settings,
+                    themeMode = themeMode,
+                    onThemeChange = { mode ->
+                        themeMode = mode
+                        settings.edit().putString("theme_mode", mode).apply()
+                    },
+                    vpnBusy = vpn || busy,
+                    onViewLogs = { showConnectionError = true }
+                )
+                "about" -> AboutScreen(
+                    onOpenDrawer = { scope.launch { drawerState.open() } }
+                )
+                else -> {
+                    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 18.dp)) {
+                            Row(Modifier.fillMaxWidth().height(60.dp), verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(
+                                    onClick = { scope.launch { drawerState.open() } },
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_lucide_menu),
+                                        contentDescription = "Open navigation drawer",
+                                        tint = MaterialTheme.colorScheme.onBackground,
+                                        modifier = Modifier.size(24.dp)
+                                    )
                                 }
-                            },
-                            onSelect = { selectedId = profile.id }, onDelete = { deleteTarget = profile },
-                            onEdit = { editLink = profile.link; editTarget = profile },
-                            onShare = {
-                                val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, profile.link)
-                                context.startActivity(Intent.createChooser(send, "Share VLESS profile"))
-                            })
-                    }
-                }
-                Row(Modifier.fillMaxWidth().padding(bottom = 10.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    val status = when (state) {
-                        NetrayVpnService.State.Connected -> "CONNECTED · ${formatUptime(uptime)}"
-                        NetrayVpnService.State.Connecting -> "CONNECTING"
-                        is NetrayVpnService.State.Error -> "CONNECTION ERROR"
-                        else -> "DISCONNECTED"
-                    }
-                    Text("●  $status", Modifier.weight(1f).clickable { showConnectionError = true }, color = if (vpn) Green else Muted, fontSize = 13.sp)
-                    Box(Modifier.size(64.dp).background(Blue, CircleShape).clickable(enabled = !busy && (vpn || selectedProfile != null)) {
-                        if (vpn) startTunnel(context, null, disconnect = true)
-                        else if (android.os.Build.VERSION.SDK_INT >= 33 &&
-                            context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
-                            notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                        else requestVpnConsent()
-                    }, contentAlignment = Alignment.Center) {
-                        Text(if (vpn) "■" else if (busy) "…" else "▶", fontSize = 24.sp, color = Color.White)
+                                Spacer(Modifier.width(8.dp))
+                                Image(
+                                    painter = painterResource(R.drawable.netray_logo),
+                                    contentDescription = "Netray logo",
+                                    modifier = Modifier.size(34.dp).clip(CircleShape)
+                                )
+                                Text("Netray", Modifier.padding(start = 12.dp).weight(1f), fontSize = 21.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
+                                IconButton(
+                                    onClick = { showImport = true },
+                                    enabled = storeReady,
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_lucide_plus),
+                                        contentDescription = "Add VLESS profile",
+                                        tint = MaterialTheme.colorScheme.onBackground,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                Box {
+                                    IconButton(
+                                        onClick = { menuExpanded = true },
+                                        modifier = Modifier.size(40.dp)
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_lucide_more_vertical),
+                                            contentDescription = "More options",
+                                            tint = MaterialTheme.colorScheme.onBackground,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                                        DropdownMenuItem(
+                                            text = { Text("Import VLESS link") },
+                                            onClick = { menuExpanded = false; showImport = true }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Settings") },
+                                            onClick = { menuExpanded = false; currentScreen = "settings" }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("About Netray") },
+                                            onClick = { menuExpanded = false; currentScreen = "about" }
+                                        )
+                                    }
+                                }
+                            }
+
+                            SingleChoiceSegmentedButtonRow(
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 14.dp)
+                            ) {
+                                SegmentedButton(
+                                    selected = selectedMode == 0,
+                                    onClick = { selectedMode = 0 },
+                                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                                    label = { Text("TUN") }
+                                )
+                                SegmentedButton(
+                                    selected = selectedMode == 1,
+                                    onClick = { selectedMode = 1 },
+                                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                                    label = { Text("Proxy") }
+                                )
+                            }
+
+                            if (storageError.isNotEmpty()) Text(storageError, color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
+                            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
+                                items(profiles, key = { it.id }) { profile ->
+                                    ProfileCard(profile, selected = profile.id == selectedId, connected = vpn || busy, storeReady = storeReady,
+                                        pingResult = pingResults[profile.id], pinging = pinging[profile.id] == true,
+                                        onPing = {
+                                            if (pinging[profile.id] != true) scope.launch {
+                                                pinging[profile.id] = true
+                                                pingResults.remove(profile.id)
+                                                val result = withContext(Dispatchers.IO) {
+                                                    runCatching {
+                                                        val start = android.os.SystemClock.elapsedRealtime()
+                                                        java.net.Socket().use { it.connect(java.net.InetSocketAddress(profile.server, profile.port), 3000) }
+                                                        "TCP ${android.os.SystemClock.elapsedRealtime() - start} ms"
+                                                    }.getOrElse { "Failed" }
+                                                }
+                                                pingResults[profile.id] = result
+                                                pinging[profile.id] = false
+                                            }
+                                        },
+                                        onSelect = { selectedId = profile.id }, onDelete = { deleteTarget = profile },
+                                        onEdit = { editLink = profile.link; editTarget = profile },
+                                        onShare = {
+                                            val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, profile.link)
+                                            context.startActivity(Intent.createChooser(send, "Share VLESS profile"))
+                                        })
+                                }
+                            }
+
+                            Row(Modifier.fillMaxWidth().padding(bottom = 14.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                val status = when (state) {
+                                    NetrayVpnService.State.Connected -> "CONNECTED · ${formatUptime(uptime)}"
+                                    NetrayVpnService.State.Connecting -> "CONNECTING…"
+                                    NetrayVpnService.State.Stopping -> "STOPPING…"
+                                    is NetrayVpnService.State.Error -> "CONNECTION ERROR"
+                                    else -> "DISCONNECTED"
+                                }
+                                Text(
+                                    text = "●  $status",
+                                    modifier = Modifier.weight(1f).clickable { showConnectionError = true },
+                                    color = if (vpn) Green else Muted,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                FilledIconButton(
+                                    onClick = {
+                                        if (vpn) startTunnel(context, null, disconnect = true)
+                                        else if (android.os.Build.VERSION.SDK_INT >= 33 &&
+                                            context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+                                            notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                        else requestVpnConsent()
+                                    },
+                                    enabled = !busy && (vpn || selectedProfile != null),
+                                    modifier = Modifier.size(64.dp),
+                                    shape = CircleShape,
+                                    colors = IconButtonDefaults.filledIconButtonColors(
+                                        containerColor = if (vpn) MaterialTheme.colorScheme.primaryContainer else Blue,
+                                        contentColor = if (vpn) MaterialTheme.colorScheme.primary else Color.White
+                                    )
+                                ) {
+                                    if (busy) {
+                                        CircularProgressIndicator(modifier = Modifier.size(28.dp), color = Color.White, strokeWidth = 2.5.dp)
+                                    } else {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_lucide_power),
+                                            contentDescription = if (vpn) "Disconnect VPN" else "Connect VPN",
+                                            modifier = Modifier.size(28.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -274,31 +442,6 @@ private fun NetrayScreen() {
         containerColor = Card
     ) }
 
-    if (showSettings) AlertDialog(
-        onDismissRequest = { showSettings = false },
-        title = { Text("Settings", color = Color.White) },
-        text = { Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Allow insecure (TLS)", color = Color.White, modifier = Modifier.weight(1f))
-                Switch(checked = allowInsecureTls, enabled = !vpn && !busy, onCheckedChange = {
-                    allowInsecureTls = it
-                    settings.edit().putBoolean("allow_insecure_tls", it).apply()
-                })
-            }
-            Text("Skips server certificate verification. Turn off for verified TLS. Disconnect before changing this setting.", color = Muted)
-        } },
-        confirmButton = { TextButton(onClick = { showSettings = false }) { Text("Close", color = Blue) } },
-        containerColor = Card
-    )
-
-    if (showAbout) AlertDialog(
-        onDismissRequest = { showAbout = false },
-        title = { Text("Netray for Android") },
-        text = { Text("Version 0.1.0 · Xray-core via XTLS/libXray") },
-        confirmButton = { TextButton(onClick = { showAbout = false }) { Text("Close") } },
-        containerColor = Card
-    )
-
     if (showConnectionError) {
         var logLines by remember { mutableStateOf(listOf("Loading connection logs…")) }
         LaunchedEffect(Unit) {
@@ -328,12 +471,6 @@ private fun NetrayScreen() {
 }
 
 @Composable
-private fun ModeChip(label: String, selected: Boolean) {
-    Text(label, color = if (selected) Color(0xFFBDEBFF) else Muted, fontSize = 13.sp,
-        modifier = Modifier.background(if (selected) Color(0xFF15304D) else Card, RoundedCornerShape(9.dp)).padding(horizontal = 12.dp, vertical = 9.dp))
-}
-
-@Composable
 private fun ProfileCard(
     profile: Profile,
     selected: Boolean,
@@ -347,43 +484,122 @@ private fun ProfileCard(
     onEdit: () -> Unit,
     onShare: () -> Unit
 ) {
-    Column(Modifier.fillMaxWidth().background(Card, RoundedCornerShape(24.dp))
-        .then(if (selected) Modifier.border(2.dp, Color(0xFF05B9F3), RoundedCornerShape(24.dp)) else Modifier)
-        .clickable(enabled = !connected, onClick = onSelect).padding(18.dp)) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(Card, RoundedCornerShape(24.dp))
+            .then(if (selected) Modifier.border(2.dp, Color(0xFF05B9F3), RoundedCornerShape(24.dp)) else Modifier)
+            .clickable(enabled = !connected, onClick = onSelect)
+            .padding(18.dp)
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("♙", color = Color(0xFF18C9FF), fontSize = 16.sp)
-            Text(profile.name, Modifier.weight(1f).padding(start = 8.dp), fontWeight = FontWeight.SemiBold, fontSize = 16.sp, maxLines = 1)
-            if (selected) Text("● SELECTED", color = Green, fontSize = 10.sp, modifier = Modifier.background(Color(0xFF08372F), RoundedCornerShape(20.dp)).padding(horizontal = 10.dp, vertical = 6.dp))
+            Icon(
+                painter = painterResource(R.drawable.ic_lucide_server),
+                contentDescription = null,
+                tint = Color(0xFF18C9FF),
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                text = profile.name,
+                modifier = Modifier.weight(1f).padding(start = 10.dp),
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 16.sp,
+                color = Color.White,
+                maxLines = 1
+            )
         }
-        Text("${profile.server}:${profile.port}", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 5.dp))
+        Text(
+            text = "${profile.server}:${profile.port}",
+            color = Muted,
+            fontSize = 13.sp,
+            modifier = Modifier.padding(top = 5.dp)
+        )
         Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Tag("VLESS", true); Tag(profile.transport.uppercase()); if (profile.security != "none") Tag(profile.security.uppercase())
+            Tag("VLESS", true)
+            Tag(profile.transport.uppercase())
+            if (profile.security != "none") Tag(profile.security.uppercase())
         }
         HorizontalDivider(Modifier.padding(top = 14.dp), color = Color(0xFF2B3340))
-        Row(Modifier.fillMaxWidth().padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(pingResult ?: profile.protocolLabel(),
-                color = if (pingResult == "Failed") Color(0xFFFF807D) else Color(0xFF60CFFF), fontSize = 12.sp,
-                modifier = if (pingResult != null) Modifier.background(Color(0xFF111821), RoundedCornerShape(18.dp)).padding(horizontal = 10.dp, vertical = 7.dp) else Modifier)
-            Spacer(Modifier.weight(1f))
-            Box(Modifier.size(40.dp).background(Blue, CircleShape).clickable(enabled = !pinging, onClick = onPing), contentAlignment = Alignment.Center) {
-                Text(if (pinging) "…" else "∿", color = Color.White, fontSize = 21.sp)
+        Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (pingResult != null) {
+                Text(
+                    text = pingResult,
+                    color = if (pingResult == "Failed") Color(0xFFFF807D) else Color(0xFF60CFFF),
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .background(Color(0xFF111821), RoundedCornerShape(18.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                )
             }
-            Text("↗", color = Muted, fontSize = 20.sp, modifier = Modifier.clickable(onClick = onShare).padding(start = 15.dp).size(28.dp).wrapContentSize(Alignment.Center))
-            Text("✎", color = if (connected || !storeReady) Muted.copy(alpha = .45f) else Muted, fontSize = 20.sp,
-                modifier = Modifier.clickable(enabled = !connected && storeReady, onClick = onEdit).padding(start = 12.dp).size(28.dp).wrapContentSize(Alignment.Center))
-            Text("▤", color = if (connected || !storeReady) Muted.copy(alpha = .45f) else Muted, fontSize = 18.sp,
-                modifier = Modifier.clickable(enabled = !connected && storeReady, onClick = onDelete).padding(start = 12.dp).size(28.dp).wrapContentSize(Alignment.Center))
+            Spacer(Modifier.weight(1f))
+            Box(
+                Modifier
+                    .size(38.dp)
+                    .background(Blue, CircleShape)
+                    .clickable(enabled = !pinging, onClick = onPing),
+                contentAlignment = Alignment.Center
+            ) {
+                if (pinging) {
+                    CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                } else {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_lucide_activity),
+                        contentDescription = "Test latency",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            IconButton(onClick = onShare, modifier = Modifier.size(38.dp)) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_lucide_share_2),
+                    contentDescription = "Share profile",
+                    tint = Muted,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(Modifier.width(4.dp))
+            IconButton(
+                enabled = !connected && storeReady,
+                onClick = onEdit,
+                modifier = Modifier.size(38.dp)
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_lucide_pencil),
+                    contentDescription = "Edit profile",
+                    tint = if (connected || !storeReady) Muted.copy(alpha = .45f) else Muted,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(Modifier.width(4.dp))
+            IconButton(
+                enabled = !connected && storeReady,
+                onClick = onDelete,
+                modifier = Modifier.size(38.dp)
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_lucide_trash_2),
+                    contentDescription = "Delete profile",
+                    tint = if (connected || !storeReady) Muted.copy(alpha = .45f) else Muted,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
     }
 }
 
 @Composable
 private fun Tag(text: String, active: Boolean = false) {
-    Text(text, color = if (active) Color(0xFF60CFFF) else Muted, fontSize = 11.sp,
-        modifier = Modifier.background(if (active) Color(0xFF27364A) else Color(0xFF222833), RoundedCornerShape(6.dp)).padding(horizontal = 9.dp, vertical = 6.dp))
+    Text(
+        text = text,
+        color = if (active) Color(0xFF60CFFF) else Muted,
+        fontSize = 11.sp,
+        modifier = Modifier
+            .background(if (active) Color(0xFF27364A) else Color(0xFF222833), RoundedCornerShape(6.dp))
+            .padding(horizontal = 9.dp, vertical = 6.dp)
+    )
 }
-
-private fun Profile.protocolLabel() = "VLESS  ·  ${transport.uppercase()}  ·  ${security.uppercase()}"
 
 private fun startTunnel(context: android.content.Context, profileId: String?, disconnect: Boolean = false) {
     val intent = Intent(context, NetrayVpnService::class.java).setAction(if (disconnect) NetrayVpnService.ACTION_DISCONNECT else NetrayVpnService.ACTION_CONNECT)
