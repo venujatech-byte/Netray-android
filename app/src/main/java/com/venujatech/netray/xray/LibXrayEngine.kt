@@ -7,29 +7,15 @@ import libXray.DialerController
 import libXray.LibXray
 import libXray.ProcessFinder
 import com.venujatech.netray.profiles.NativeBackend
-import org.json.JSONArray
 import org.json.JSONObject
-import java.lang.reflect.Proxy
 
-/** Keeps the unstable gomobile surface isolated from Android VPN lifecycle code. */
 class LibXrayEngine(private val service: VpnService) {
-    private val api = Class.forName("libXray.LibXray")
-    private val controller = Class.forName("libXray.DialerController")
-    private val callback = Proxy.newProxyInstance(controller.classLoader, arrayOf(controller)) { proxy, method, args ->
-        when {
-            method.name.equals("protectFd", true) -> service.protect((args?.firstOrNull() as Number).toInt())
-            method.name == "toString" -> "NetrayDialerController"
-            method.name == "hashCode" -> System.identityHashCode(proxy)
-            method.name == "equals" -> proxy === args?.firstOrNull()
-            else -> false
-        }
-    }
 
     fun start(link: String, tunFd: Int) {
-        // libXray calls this handler during TUN traffic even without per-app routing.
+        VpnDialerController.activeService = service
+        ensureDialerRegistered()
         LibXray.registerProcessFinder(ProcessFinder { _, _, _, _, _ -> -1L }, Build.VERSION.SDK_INT.toLong())
-        api.getMethod("registerDialerController", controller).invoke(null, callback)
-        api.getMethod("setDNS", controller, String::class.java).invoke(null, callback, "1.1.1.1:53")
+        LibXray.setDNS(VpnDialerController, "1.1.1.1:53")
         val converted = invoke("convertShareLinksToXrayJson", JSONObject().put("text", link)).getJSONObject("data")
         val outbounds = converted.getJSONArray("outbounds")
         val allowInsecure = service.getSharedPreferences("settings", 0).getBoolean("allow_insecure_tls", false)
@@ -58,15 +44,37 @@ class LibXrayEngine(private val service: VpnService) {
 
     fun stop() {
         runCatching { invoke("stopXray", JSONObject()) }
-        runCatching { api.getMethod("resetDNS").invoke(null) }
-        // Pending Go dialers may outlive stopXray; a null callback can panic.
-        runCatching { LibXray.registerDialerController(DialerController { false }) }
+        runCatching { LibXray.resetDNS() }
+        VpnDialerController.activeService = null
     }
 
     private fun invoke(method: String, payload: JSONObject): JSONObject {
         val request = JSONObject().put("apiVersion", 3).put("method", method).put("payload", payload)
-        val response = JSONObject(api.getMethod("invoke", String::class.java).invoke(null, request.toString()) as String)
+        val response = JSONObject(LibXray.invoke(request.toString()))
         check(response.optBoolean("success")) { response.optString("error", "Xray request failed") }
         return response
+    }
+
+    private object VpnDialerController : DialerController {
+        @Volatile var activeService: VpnService? = null
+
+        override fun protectFd(fd: Long): Boolean {
+            val s = activeService ?: return true
+            return s.protect(fd.toInt())
+        }
+    }
+
+    companion object {
+        private var registered = false
+        private val lock = Any()
+
+        private fun ensureDialerRegistered() {
+            synchronized(lock) {
+                if (!registered) {
+                    LibXray.registerDialerController(VpnDialerController)
+                    registered = true
+                }
+            }
+        }
     }
 }

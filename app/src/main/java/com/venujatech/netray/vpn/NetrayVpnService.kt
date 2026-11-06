@@ -56,14 +56,22 @@ class NetrayVpnService : VpnService() {
             android.util.Log.i("NetrayVpn", "Starting Xray")
             xray.start(profile.link, descriptor.fd)
             android.util.Log.i("NetrayVpn", "Xray started; checking tunnel connectivity")
-            val connection = (java.net.URL("https://1.1.1.1/cdn-cgi/trace").openConnection() as java.net.HttpURLConnection).apply {
-                connectTimeout = 5000
-                readTimeout = 5000
-                useCaches = false
+            // A single probe host can reset or filter VPN traffic; accept any known HTTPS check.
+            val probeErrors = mutableListOf<String>()
+            val ready = listOf("https://1.1.1.1/cdn-cgi/trace", "https://www.google.com/generate_204").any { address ->
+                val connection = (java.net.URL(address).openConnection() as java.net.HttpURLConnection).apply {
+                    connectTimeout = 5000
+                    readTimeout = 5000
+                    useCaches = false
+                }
+                try {
+                    connection.responseCode in 200..399
+                } catch (e: java.io.IOException) {
+                    probeErrors += (e.cause ?: e).javaClass.simpleName
+                    false
+                } finally { connection.disconnect() }
             }
-            // An IP endpoint avoids Android DNS lookup delays outside connectTimeout.
-            val ready = try { connection.responseCode in 200..399 } finally { connection.disconnect() }
-            check(ready) { "Tunnel started but the connectivity check failed" }
+            check(ready) { "Tunnel connectivity check failed (${probeErrors.distinct().joinToString(", ")})" }
             if (state.value is State.Stopping) { releaseTunnel(); return }
             android.util.Log.i("NetrayVpn", "Tunnel connectivity check passed")
             state.value = State.Connected
@@ -84,8 +92,8 @@ class NetrayVpnService : VpnService() {
         android.util.Log.i("NetrayVpn", "Disconnect requested; stopping Xray and closing VPN")
         state.value = State.Stopping
         worker.execute {
-            getSharedPreferences(STATE_PREFS, MODE_PRIVATE).edit().remove(EXTRA_PROFILE).apply()
             releaseTunnel()
+            getSharedPreferences(STATE_PREFS, MODE_PRIVATE).edit().remove(EXTRA_PROFILE).apply()
             Handler(Looper.getMainLooper()).post {
                 state.value = State.Disconnected
                 stopForeground(STOP_FOREGROUND_REMOVE)
@@ -95,7 +103,7 @@ class NetrayVpnService : VpnService() {
     }
 
     private fun releaseTunnel() {
-        engine?.stop(); engine = null
+        runCatching { engine?.stop() }; engine = null
         runCatching { tun?.close() }; tun = null
     }
 
