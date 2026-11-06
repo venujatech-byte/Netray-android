@@ -3,7 +3,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <application android:allowBackup="false" android:icon="@drawable/netray_icon" android:label="Netray" android:theme="@style/Theme.Netray">
+    <application android:allowBackup="false" android:icon="@drawable/netray_logo" android:label="Netray" android:theme="@style/Theme.Netray">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
