@@ -7,7 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
-private val DarkColorScheme = darkColorScheme(
+private val DarkColorSchemeBase = darkColorScheme(
     primary = Color(0xFF2788FF),
     onPrimary = Color(0xFF001F3F),
     primaryContainer = Color(0xFF00497D),
@@ -30,7 +30,7 @@ private val DarkColorScheme = darkColorScheme(
     outlineVariant = Color(0xFF42474E),
 )
 
-private val LightColorScheme = lightColorScheme(
+private val LightColorSchemeBase = lightColorScheme(
     primary = Color(0xFF0061A4),
     onPrimary = Color(0xFFFFFFFF),
     primaryContainer = Color(0xFFD1E4FF),
@@ -53,10 +53,27 @@ private val LightColorScheme = lightColorScheme(
     outlineVariant = Color(0xFFC2C7CF),
 )
 
+fun darkColorSchemeWithAccent(accentColor: Color): ColorScheme =
+    DarkColorSchemeBase.copy(
+        primary = accentColor,
+        onPrimary = Color(0xFF001F3F),
+        primaryContainer = Color(0xFF00497D),
+        onPrimaryContainer = Color(0xFFD1E4FF),
+    )
+
+fun lightColorSchemeWithAccent(accentColor: Color): ColorScheme =
+    LightColorSchemeBase.copy(
+        primary = accentColor,
+        onPrimary = Color(0xFFFFFFFF),
+        primaryContainer = Color(0xFFD1E4FF),
+        onPrimaryContainer = Color(0xFF001D36),
+    )
+
 @Composable
 fun NetrayTheme(
     themeMode: String = "system",
     dynamicColor: Boolean = true,
+    colorScheme: ColorScheme? = null,
     content: @Composable () -> Unit
 ) {
     val darkTheme = when (themeMode) {
@@ -65,16 +82,16 @@ fun NetrayTheme(
         else -> isSystemInDarkTheme()
     }
     val context = LocalContext.current
-    val colorScheme = when {
+    val resolvedColorScheme = colorScheme ?: when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+        darkTheme -> DarkColorSchemeBase
+        else -> LightColorSchemeBase
     }
 
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = resolvedColorScheme,
         content = content
     )
 }

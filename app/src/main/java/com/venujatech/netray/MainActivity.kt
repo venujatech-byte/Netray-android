@@ -23,6 +23,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -59,6 +60,8 @@ import com.venujatech.netray.ui.LogsScreen
 import com.venujatech.netray.ui.QrScannerScreen
 import com.venujatech.netray.ui.SettingsScreen
 import com.venujatech.netray.ui.theme.NetrayTheme
+import com.venujatech.netray.ui.theme.darkColorSchemeWithAccent
+import com.venujatech.netray.ui.theme.lightColorSchemeWithAccent
 import com.venujatech.netray.vpn.NetrayVpnService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -75,6 +78,20 @@ private val Card = Color(0xFF1B202A)
 private val Blue = Color(0xFF2788FF)
 private val Muted = Color(0xFF93A1B5)
 private val Green = Color(0xFF36D399)
+
+fun colorSchemeForAccent(accentColor: String, isDark: Boolean): ColorScheme {
+    val accent = when (accentColor) {
+        "green" -> Color(0xFF36D399)
+        "purple" -> Color(0xFFB366FF)
+        "orange" -> Color(0xFFFF8C42)
+        else -> Color(0xFF2788FF) // blue default
+    }
+    return if (isDark) {
+        darkColorSchemeWithAccent(accent)
+    } else {
+        lightColorSchemeWithAccent(accent)
+    }
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -222,7 +239,9 @@ private fun NetrayScreen() {
         else notificationError = "Allow notifications so Android can show the VPN's background status."
     }
 
-    NetrayTheme(themeMode = themeMode) {
+    val isDark = themeMode == "dark" || (themeMode == "system" && androidx.compose.foundation.isSystemInDarkTheme())
+    val colorScheme = colorSchemeForAccent(accentColor, isDark)
+    NetrayTheme(themeMode = themeMode, dynamicColor = false, colorScheme = colorScheme) {
         if (showQrScanner) {
             QrScannerScreen(
                 onScanResult = { raw ->
