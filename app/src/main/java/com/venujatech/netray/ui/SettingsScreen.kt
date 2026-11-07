@@ -249,23 +249,17 @@ fun SettingsScreen(
             // App Updates
             item {
                 SettingsCard(title = "App Updates") {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            text = "Version 0.1.0",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedButton(
+                            onClick = onCheckForUpdates,
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(
-                                text = "Version 0.1.0",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(Modifier.weight(1f))
-                            OutlinedButton(
-                                onClick = onCheckForUpdates,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Check for Updates")
-                            }
+                            Text("Check for Updates")
                         }
                     }
                 }

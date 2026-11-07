@@ -440,26 +440,38 @@ private fun NetrayScreen() {
                                 IconButton(
                                     onClick = { showImport = true },
                                     enabled = storeReady,
-                                    modifier = Modifier.size(40.dp)
-                                ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_lucide_plus),
-                                        contentDescription = "Add VLESS profile",
-                                        tint = MaterialTheme.colorScheme.onBackground,
-                                        modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(40.dp),
+                                    shape = CircleShape,
+                                    colors = IconButtonDefaults.filledIconButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = Color.White
                                     )
+                                ) {
+                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_lucide_plus),
+                                            contentDescription = "Add VLESS profile",
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                 }
                                 IconButton(
                                     onClick = { showQrScanner = true },
                                     enabled = storeReady,
-                                    modifier = Modifier.size(40.dp)
-                                ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_lucide_qr_code),
-                                        contentDescription = "Scan QR code to import",
-                                        tint = MaterialTheme.colorScheme.onBackground,
-                                        modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(40.dp),
+                                    shape = CircleShape,
+                                    colors = IconButtonDefaults.filledIconButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = Color.White
                                     )
+                                ) {
+                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_lucide_scan_line),
+                                            contentDescription = "Scan QR code to import",
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                 }
                                 IconButton(
                                     onClick = {
@@ -475,14 +487,20 @@ private fun NetrayScreen() {
                                         }
                                     },
                                     enabled = storeReady,
-                                    modifier = Modifier.size(40.dp)
-                                ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_lucide_copy),
-                                        contentDescription = "Import config from clipboard",
-                                        tint = MaterialTheme.colorScheme.onBackground,
-                                        modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(40.dp),
+                                    shape = CircleShape,
+                                    colors = IconButtonDefaults.filledIconButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = Color.White
                                     )
+                                ) {
+                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_lucide_scan_square),
+                                            contentDescription = "Import config from clipboard",
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                 }
                                 Box {
                                     IconButton(
@@ -691,7 +709,7 @@ private fun NetrayScreen() {
                                         contentColor = Color.White
                                     )
                                 ) {
-                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
                                         Icon(
                                             painter = painterResource(if (connected) R.drawable.ic_stop else R.drawable.ic_start),
                                             contentDescription = if (connected) "Disconnect" else "Connect",
