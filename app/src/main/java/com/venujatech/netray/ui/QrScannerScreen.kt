@@ -37,9 +37,6 @@ import androidx.lifecycle.Observer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.google.mlkit.vision.barcode.BarcodeScanner
-import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.common.InputImage
 import com.venujatech.netray.R
 import com.venujatech.netray.ui.theme.LocalNetrayPalette
 import kotlinx.coroutines.Dispatchers
@@ -82,7 +79,6 @@ fun QrScannerScreen(
     ) { }
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
     val executor: ExecutorService = remember { Executors.newSingleThreadExecutor() }
-    val barcodeScanner: BarcodeScanner = remember { BarcodeScanning.getClient() }
     val previewView = remember { PreviewView(context) }
     fun decodePickedImage(uri: Uri) {
         if (decodingImage) return
@@ -141,7 +137,6 @@ fun QrScannerScreen(
             cameraReady = false
             torchOn = false
             executor.shutdown()
-            barcodeScanner.close()
         }
     }
 
@@ -181,23 +176,32 @@ fun QrScannerScreen(
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
             analysis.setAnalyzer(executor) { imageProxy ->
-                val mediaImage = imageProxy.image
-                if (mediaImage == null || !scanning) {
+                if (!scanning) {
                     imageProxy.close()
                     return@setAnalyzer
                 }
-                val inputImage = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-                val task = barcodeScanner.process(inputImage)
-                task.addOnSuccessListener { barcodes ->
-                    val hits = barcodes.mapNotNull { it.rawValue?.takeIf(String::isNotBlank) }.distinct()
-                    if (hits.isNotEmpty() && scanning) {
+                val plane = imageProxy.planes.firstOrNull()
+                if (plane == null) {
+                    imageProxy.close()
+                    return@setAnalyzer
+                }
+                try {
+                    val raw = QrImageDecoder.decodeLiveYPlane(
+                        buffer = plane.buffer,
+                        width = imageProxy.width,
+                        height = imageProxy.height,
+                        rowStride = plane.rowStride,
+                        pixelStride = plane.pixelStride,
+                        rotationDegrees = imageProxy.imageInfo.rotationDegrees
+                    )
+                    if (!raw.isNullOrBlank() && scanning) {
                         scanning = false
                         camera?.cameraControl?.enableTorch(false)
-                        onScanResult(hits.joinToString("\n"))
+                        onScanResult(raw)
                     }
+                } finally {
                     imageProxy.close()
                 }
-                task.addOnFailureListener { imageProxy.close() }
             }
             val boundCamera = provider.bindToLifecycle(
                 lifecycleOwner,

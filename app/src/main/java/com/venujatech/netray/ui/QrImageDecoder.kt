@@ -12,10 +12,12 @@ import com.google.zxing.DecodeHintType
 import com.google.zxing.LuminanceSource
 import com.google.zxing.MultiFormatReader
 import com.google.zxing.NotFoundException
+import com.google.zxing.PlanarYUVLuminanceSource
 import com.google.zxing.Result
 import com.google.zxing.common.HybridBinarizer
 import com.google.zxing.multi.GenericMultipleBarcodeReader
 import java.io.IOException
+import java.nio.ByteBuffer
 import kotlin.math.max
 
 internal object QrImageDecoder {
@@ -50,6 +52,37 @@ internal object QrImageDecoder {
         val longest = max(width, height)
         while (longest / sample > maxLongSide) sample *= 2
         return sample
+    }
+
+    fun decodeLiveYPlane(
+        buffer: ByteBuffer,
+        width: Int,
+        height: Int,
+        rowStride: Int,
+        pixelStride: Int,
+        rotationDegrees: Int
+    ): String? {
+        if (width <= 0 || height <= 0 || rowStride <= 0 || pixelStride <= 0) return null
+        val bytes = ByteArray(width * height)
+        val plane = buffer.duplicate()
+        val base = plane.position()
+        for (y in 0 until height) {
+            val rowStart = base + y * rowStride
+            for (x in 0 until width) {
+                val index = rowStart + x * pixelStride
+                if (index >= plane.limit()) return null
+                bytes[y * width + x] = plane.get(index)
+            }
+        }
+        var source: LuminanceSource = PlanarYUVLuminanceSource(bytes, width, height, 0, 0, width, height, false)
+        val counterClockwiseTurns = ((360 - rotationDegrees.mod(360)) % 360) / 90
+        repeat(counterClockwiseTurns) {
+            if (source.isRotateSupported) source = source.rotateCounterClockwise()
+        }
+        val reader = MultiFormatReader().apply {
+            setHints(mapOf(DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE)))
+        }
+        return runCatching { reader.decode(BinaryBitmap(HybridBinarizer(source))).text }.getOrNull()
     }
 
     internal fun decodeSource(source: LuminanceSource): List<String> {

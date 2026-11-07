@@ -45,4 +45,18 @@ The four-ABI Go core is the main reason a universal APK is ~170 MB. The next ran
 
 ## After optimization
 
-Results and per-ABI measurements will be appended here after each committed optimization batch.
+### Release-size batch 1 (two ARM ABIs, R8 resource shrink, ZXing-only QR decode)
+
+| Metric | Baseline | After batch 1 | Delta |
+|---|---:|---:|---:|
+| Universal release APK | 166,698,247 bytes | 73,261,448 bytes | -93,436,799 bytes (-56.0%) |
+| Release AAB | 68,534,185 bytes | 31,285,088 bytes | -37,249,097 bytes (-54.3%) |
+| AAB arm64-v8a download estimate | 18,667,261 bytes | 15,601,558 bytes | -16.4% |
+| AAB armeabi-v7a download estimate | 18,912,205 bytes | 16,164,475 bytes | -14.5% |
+| Universal APK ABI payloads | 4 ABIs | arm64-v8a + armeabi-v7a | x86 and x86_64 removed |
+
+The AAB estimates use compressed base-module entries plus compressed native entries for the ABI. They are estimates rather than a `bundletool get-size total` result because bundletool is not installed in this environment. The universal APK still contains both ARM ABIs for sideloading.
+
+The bundled `libgojni.so` remains ~33–34 MB per ARM ABI uncompressed and is still the largest component. Stripping did not apply to it because the AAR's Go shared library is prebuilt; optimize only by changing/rebuilding the upstream integration and checking MPL obligations. The Xray source archive remains bundled for source availability.
+
+Runtime before/after remains unmeasured for connected state; idle PSS/startup measurements after the split build are recorded when the debug APK is installed from the requested command.

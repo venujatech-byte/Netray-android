@@ -59,9 +59,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
-import com.google.android.gms.tasks.Tasks
-import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.common.InputImage
 import com.venujatech.netray.profiles.Profile
 import com.venujatech.netray.profiles.ProfileStore
 import com.venujatech.netray.profiles.NativeBackend
@@ -78,6 +75,7 @@ import com.venujatech.netray.ui.RawConfigDialog
 import com.venujatech.netray.ui.RawJsonEditorScreen
 import com.venujatech.netray.ui.LogsScreen
 import com.venujatech.netray.ui.QrScannerScreen
+import com.venujatech.netray.ui.QrImageDecoder
 import com.venujatech.netray.ui.SettingsScreen
 import com.venujatech.netray.ui.theme.NetrayTheme
 import com.venujatech.netray.ui.theme.LocalNetrayPalette
@@ -1357,14 +1355,8 @@ private suspend fun readImportFile(context: Context, uri: Uri): String = withCon
 }
 
 private suspend fun readQrFromImage(context: Context, uri: Uri): String = withContext(Dispatchers.IO) {
-    val scanner = BarcodeScanning.getClient()
-    try {
-        val image = InputImage.fromFilePath(context, uri)
-        val qr = Tasks.await(scanner.process(image)).firstOrNull { !it.rawValue.isNullOrBlank() }
-        qr?.rawValue ?: error(context.getString(R.string.error_qr_image))
-    } finally {
-        scanner.close()
-    }
+    QrImageDecoder.decode(context, uri).takeIf(List<String>::isNotEmpty)
+        ?.joinToString("\n") ?: error(context.getString(R.string.error_qr_image))
 }
 
 private fun startTunnel(context: android.content.Context, profileId: String?, mode: Int = 0, disconnect: Boolean = false) {
