@@ -44,6 +44,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -148,9 +149,6 @@ private fun NetrayScreen() {
     var socksPort by remember { mutableIntStateOf(settings.getInt("proxy_socks_port", 10808)) }
     var httpPort by remember { mutableIntStateOf(settings.getInt("proxy_http_port", 10809)) }
     var accentColor by remember { mutableStateOf(settings.getString("accent_color", "blue") ?: "blue") }
-    var uptime by remember { mutableLongStateOf(0) }
-    var connectedPingMs by remember { mutableStateOf<Long?>(null) }
-    var connectedPinging by remember { mutableStateOf(false) }
     val state by NetrayVpnService.state.collectAsStateWithLifecycle()
     val proxyState by NetrayProxyService.state.collectAsStateWithLifecycle()
     val vpn = state is NetrayVpnService.State.Connected
@@ -186,54 +184,6 @@ private fun NetrayScreen() {
             }
             .onFailure { storageError = "Saved profiles could not be read. They have been kept unchanged." }
     }
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(state, proxyState, lifecycle, currentScreen, editTarget) {
-        if (connected && currentScreen == "configs" && editTarget == null) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            while (true) {
-                val startedAt = if (vpn) NetrayVpnService.connectedAt else NetrayProxyService.connectedAt
-                uptime = (android.os.SystemClock.elapsedRealtime() - startedAt) / 1000
-                delay(1000)
-            }
-        } else if (!connected) {
-            uptime = 0
-        }
-    }
-
-    LaunchedEffect(state, proxyState, currentScreen, editTarget) {
-        val isConnected = vpn || proxyConnected
-        if (isConnected && currentScreen == "configs" && editTarget == null) {
-            try {
-                while (true) {
-                    if (selectedId.isNotBlank() && !connectedPinging) {
-                        val profile = profiles.firstOrNull { it.id == selectedId }
-                        if (profile != null) {
-                            connectedPinging = true
-                            try {
-                                val result = withContext(Dispatchers.IO) {
-                                    if (proxyConnected) {
-                                        // Ping through the local HTTP proxy inbound.
-                                        httpPingViaProxy(proxyHttpPort)
-                                    } else {
-                                        httpPing()
-                                    }
-                                }
-                                connectedPingMs = if (result.endsWith(" ms")) result.removeSuffix(" ms").toLongOrNull() else null
-                            } finally {
-                                connectedPinging = false
-                            }
-                        }
-                    }
-                    delay(5000)
-                }
-            } finally {
-                connectedPinging = false
-            }
-        } else {
-            connectedPinging = false
-            if (!isConnected) connectedPingMs = null
-        }
-    }
-
     var pendingProfileId by rememberSaveable { mutableStateOf("") }
     val consent = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK && pendingProfileId.isNotBlank()) startTunnel(context, pendingProfileId, selectedMode)
@@ -683,26 +633,13 @@ private fun NetrayScreen() {
                             }
 
                             Row(Modifier.fillMaxWidth().padding(bottom = 14.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                val status = when {
-                                    proxyConnected -> {
-                                        val pingPart = connectedPingMs?.let { " · ${it} ms" }.orEmpty()
-                                        "PROXY · ${formatUptime(uptime)}$pingPart"
-                                    }
-                                    vpn -> {
-                                        val pingPart = connectedPingMs?.let { " · ${it} ms" }.orEmpty()
-                                        "CONNECTED · ${formatUptime(uptime)}$pingPart"
-                                    }
-                                    proxyState is NetrayProxyService.State.Connecting || state is NetrayVpnService.State.Connecting -> "CONNECTING…"
-                                    proxyState is NetrayProxyService.State.Stopping || state is NetrayVpnService.State.Stopping -> "STOPPING…"
-                                    proxyState is NetrayProxyService.State.Error || state is NetrayVpnService.State.Error -> "CONNECTION ERROR"
-                                    else -> "DISCONNECTED"
-                                }
-                                Text(
-                                    text = "●  $status",
-                                    modifier = Modifier.weight(1f).clickable { currentScreen = "logs" },
-                                    color = if (connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium
+                                ConnectionStatusLabel(
+                                    state = state,
+                                    proxyState = proxyState,
+                                    profileId = selectedId,
+                                    proxyHttpPort = proxyHttpPort,
+                                    onClick = { currentScreen = "logs" },
+                                    modifier = Modifier.weight(1f)
                                 )
                                 FilledIconButton(
                                     onClick = {
@@ -880,12 +817,13 @@ private fun ProfileCard(
     Column(
         Modifier
             .fillMaxWidth()
+            .wrapContentHeight()
             .background(Card, RoundedCornerShape(24.dp))
             .then(if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(24.dp)) else Modifier)
             .clickable(enabled = !connected, onClick = onSelect)
             .padding(18.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 painter = painterResource(R.drawable.ic_lucide_server),
                 contentDescription = null,
@@ -898,21 +836,25 @@ private fun ProfileCard(
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 16.sp,
                 color = Color.White,
-                maxLines = 1
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
+            Spacer(Modifier.width(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Tag("VLESS", true)
+                Tag(profile.transport.uppercase())
+                if (profile.security != "none") Tag(profile.security.uppercase())
+            }
         }
         Text(
             text = "${profile.server}:${profile.port}",
             color = Muted,
             fontSize = 13.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 5.dp)
         )
-        Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Tag("VLESS", true)
-            Tag(profile.transport.uppercase())
-            if (profile.security != "none") Tag(profile.security.uppercase())
-        }
-        HorizontalDivider(Modifier.padding(top = 14.dp), color = Color(0xFF2B3340))
+        HorizontalDivider(Modifier.padding(top = 10.dp), color = Color(0xFF2B3340))
         Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             if (pingResult != null) {
                 Text(
@@ -980,6 +922,76 @@ private fun ProfileCard(
             }
         }
     }
+}
+
+@Composable
+private fun ConnectionStatusLabel(
+    state: NetrayVpnService.State,
+    proxyState: NetrayProxyService.State,
+    profileId: String,
+    proxyHttpPort: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val vpnConnected = state is NetrayVpnService.State.Connected
+    val proxyConnected = proxyState is NetrayProxyService.State.Connected
+    val connected = vpnConnected || proxyConnected
+    var uptime by remember { mutableLongStateOf(0) }
+    var connectedPingMs by remember { mutableStateOf<Long?>(null) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+
+    LaunchedEffect(state, proxyState, lifecycle) {
+        if (connected) {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    val startedAt = if (vpnConnected) NetrayVpnService.connectedAt else NetrayProxyService.connectedAt
+                    uptime = (android.os.SystemClock.elapsedRealtime() - startedAt) / 1000
+                    delay(1000)
+                }
+            }
+        } else {
+            uptime = 0
+        }
+    }
+
+    LaunchedEffect(state, proxyState, profileId, proxyHttpPort) {
+        if (connected) {
+            while (true) {
+                if (profileId.isNotBlank()) {
+                    val result = try {
+                        withContext(Dispatchers.IO) {
+                            if (proxyConnected) httpPingViaProxy(proxyHttpPort) else httpPing()
+                        }
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        throw cancelled
+                    } catch (failure: Exception) {
+                        "Failed"
+                    }
+                    connectedPingMs = if (result.endsWith(" ms")) result.removeSuffix(" ms").toLongOrNull() else null
+                }
+                delay(5000)
+            }
+        } else {
+            connectedPingMs = null
+        }
+    }
+
+    val pingPart = connectedPingMs?.let { " · ${it} ms" }.orEmpty()
+    val status = when {
+        proxyConnected -> "PROXY · ${formatUptime(uptime)}$pingPart"
+        vpnConnected -> "CONNECTED · ${formatUptime(uptime)}$pingPart"
+        proxyState is NetrayProxyService.State.Connecting || state is NetrayVpnService.State.Connecting -> "CONNECTING…"
+        proxyState is NetrayProxyService.State.Stopping || state is NetrayVpnService.State.Stopping -> "STOPPING…"
+        proxyState is NetrayProxyService.State.Error || state is NetrayVpnService.State.Error -> "CONNECTION ERROR"
+        else -> "DISCONNECTED"
+    }
+    Text(
+        text = "●  $status",
+        modifier = modifier.clickable(onClick = onClick),
+        color = if (connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Medium
+    )
 }
 
 @Composable
