@@ -128,7 +128,6 @@ private fun NetrayScreen() {
     var shareTarget by remember { mutableStateOf<Profile?>(null) }
     var shareLink by remember { mutableStateOf("") }
     var shareCopied by remember { mutableStateOf(false) }
-    var shareProtected by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
     var showImport by rememberSaveable { mutableStateOf(false) }
     var showImportConfirm by rememberSaveable { mutableStateOf(false) }
@@ -836,15 +835,13 @@ private fun NetrayScreen() {
             shareLink = shareLink,
             darkTheme = isDark,
             shareCopied = shareCopied,
-            shareProtected = shareProtected,
             onCopy = {
                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 clipboard.setPrimaryClip(ClipData.newPlainText("Netray config", shareLink))
                 shareCopied = true
                 Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
             },
-            onClose = { shareTarget = null; shareCopied = false; shareProtected = false },
-            onProtectChange = { shareProtected = it }
+            onClose = { shareTarget = null; shareCopied = false }
         )
     }
 }
@@ -1062,10 +1059,8 @@ private fun ShareDialog(
     shareLink: String,
     darkTheme: Boolean,
     shareCopied: Boolean,
-    shareProtected: Boolean,
     onCopy: () -> Unit,
-    onClose: () -> Unit,
-    onProtectChange: (Boolean) -> Unit
+    onClose: () -> Unit
 ) {
     val qrBitmap by produceState<Bitmap?>(initialValue = null, shareLink) {
         value = withContext(Dispatchers.Default) {
@@ -1123,33 +1118,47 @@ private fun ShareDialog(
                 )
             }
             Spacer(Modifier.height(16.dp))
-            // Link section
-            Text(
-                text = "Link",
-                style = MaterialTheme.typography.labelSmall,
-                color = dialogTextVariant,
-                modifier = Modifier.padding(horizontal = 16.dp).padding(top = 0.dp)
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant
             ) {
-                Text(
-                    text = shareLink,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = dialogText,
-                    modifier = Modifier.weight(1f)
-                )
-                IconButton(
-                    onClick = onCopy,
-                    modifier = Modifier.size(40.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        painter = painterResource(R.drawable.ic_lucide_copy),
-                        contentDescription = "Copy link",
-                        tint = if (shareCopied) Green else MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
+                        painter = painterResource(R.drawable.ic_lucide_link),
+                        contentDescription = null,
+                        tint = dialogTextVariant,
+                        modifier = Modifier.size(30.dp)
                     )
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = "Link",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = dialogTextVariant
+                        )
+                        Text(
+                            text = shareLink,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = dialogText,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                    }
+                    IconButton(
+                        onClick = onCopy,
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_lucide_copy),
+                            contentDescription = "Copy link",
+                            tint = if (shareCopied) Green else dialogTextVariant,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
                 }
             }
             if (shareCopied) {
@@ -1158,30 +1167,6 @@ private fun ShareDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = Green,
                     modifier = Modifier.padding(horizontal = 16.dp).padding(top = 4.dp)
-                )
-            }
-            Spacer(Modifier.height(16.dp))
-            // Protect / Standard toggle
-            Text(
-                text = "Protection",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp).padding(top = 0.dp)
-            )
-            SingleChoiceSegmentedButtonRow(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-            ) {
-                SegmentedButton(
-                    selected = !shareProtected,
-                    onClick = { onProtectChange(false) },
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                    label = { Text("Standard") }
-                )
-                SegmentedButton(
-                    selected = shareProtected,
-                    onClick = { onProtectChange(true) },
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                    label = { Text("Protect") }
                 )
             }
         } },
