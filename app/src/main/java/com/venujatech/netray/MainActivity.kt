@@ -1,9 +1,13 @@
 package com.venujatech.netray
 
 import android.app.Activity
+import android.content.ClipboardManager
+import android.content.ClipData
+import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -43,6 +47,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.venujatech.netray.profiles.Profile
 import com.venujatech.netray.profiles.ProfileStore
+import com.venujatech.netray.profiles.NativeBackend
 import com.venujatech.netray.ui.AboutScreen
 import com.venujatech.netray.ui.CheckIpScreen
 import com.venujatech.netray.ui.LogsScreen
@@ -88,6 +93,9 @@ private fun NetrayScreen() {
     var editTarget by remember { mutableStateOf<Profile?>(null) }
     var editLink by rememberSaveable { mutableStateOf("") }
     var editError by rememberSaveable { mutableStateOf("") }
+    var shareTarget by remember { mutableStateOf<Profile?>(null) }
+    var shareLink by remember { mutableStateOf("") }
+    var shareCopied by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
     val settings = remember { context.getSharedPreferences("settings", 0) }
     var themeMode by rememberSaveable { mutableStateOf(settings.getString("theme_mode", "system") ?: "system") }
@@ -349,6 +357,15 @@ private fun NetrayScreen() {
                                             val shareLink = generateShareLink(profile.link, profile.name)
                                             val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, shareLink)
                                             context.startActivity(Intent.createChooser(send, "Share VLESS profile"))
+                                        },
+                                        onQr = {
+                                            shareTarget = profile
+                                            shareLink = profile.link
+                                        },
+                                        onCopy = {
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            clipboard.setPrimaryClip(ClipData.newPlainText("Netray config", profile.link))
+                                            Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
                                         })
                                 }
                             }
@@ -482,6 +499,46 @@ private fun NetrayScreen() {
         containerColor = Card
     ) }
 
+    shareTarget?.let { profile -> AlertDialog(
+        onDismissRequest = { shareTarget = null; shareCopied = false },
+        title = { Text("QR Code & Copy") },
+        text = { Column {
+            Text(
+                text = "QR Code",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "Scan to import this config",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+            Text(
+                text = "Link",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = shareLink,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 3,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+        } },
+        confirmButton = { TextButton(onClick = {
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("Netray config", shareLink))
+            shareCopied = true
+            Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+        }) {
+            Text(if (shareCopied) "Copied!" else "Copy", color = if (shareCopied) Green else MaterialTheme.colorScheme.primary)
+        } },
+        dismissButton = { TextButton(onClick = { shareTarget = null; shareCopied = false }) { Text("Close") } },
+        containerColor = Card
+    ) }
+
 }
 
 @Composable
@@ -496,7 +553,9 @@ private fun ProfileCard(
     onSelect: () -> Unit,
     onDelete: () -> Unit,
     onEdit: () -> Unit,
-    onShare: () -> Unit
+    onShare: () -> Unit,
+    onQr: () -> Unit,
+    onCopy: () -> Unit
 ) {
     Column(
         Modifier
@@ -569,6 +628,24 @@ private fun ProfileCard(
                 Icon(
                     painter = painterResource(R.drawable.ic_lucide_share_2),
                     contentDescription = "Share profile",
+                    tint = Muted,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(Modifier.width(4.dp))
+            IconButton(onClick = onQr, modifier = Modifier.size(38.dp)) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_lucide_qr_code),
+                    contentDescription = "Show QR code",
+                    tint = Muted,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(Modifier.width(4.dp))
+            IconButton(onClick = onCopy, modifier = Modifier.size(38.dp)) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_lucide_copy),
+                    contentDescription = "Copy link",
                     tint = Muted,
                     modifier = Modifier.size(18.dp)
                 )

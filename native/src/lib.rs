@@ -4,6 +4,8 @@ use jni::{
     JNIEnv,
 };
 use percent_encoding::percent_decode_str;
+use qrcode::QrCode;
+use qrcode::render::svg;
 use serde::Serialize;
 use url::Url;
 use uuid::Uuid;
@@ -92,6 +94,17 @@ fn result_json<T: Serialize>(result: Result<T, &'static str>) -> String {
     }
 }
 
+fn generate_qr_svg(content: &str) -> Result<String, &'static str> {
+    let code = QrCode::new(content.as_bytes()).map_err(|_| "QR code generation error")?;
+    let image = code
+        .render::<svg::Color>()
+        .min_dimensions(240, 240)
+        .dark_color(svg::Color("#0f1117"))
+        .light_color(svg::Color("#ffffff"))
+        .build();
+    Ok(image)
+}
+
 #[no_mangle]
 pub extern "system" fn Java_com_venujatech_netray_profiles_NativeBackend_parseVless(
     mut env: JNIEnv,
@@ -121,6 +134,25 @@ pub extern "system" fn Java_com_venujatech_netray_profiles_NativeBackend_buildTu
     // The success value is already JSON; wrapping it as a JSON string breaks Kotlin's object parser.
     let output = match response {
         Ok(config) => config,
+        Err(error) => serde_json::json!({"error": error}).to_string(),
+    };
+    env.new_string(output)
+        .expect("JNI string allocation failed")
+        .into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_venujatech_netray_profiles_NativeBackend_generateQrSvg(
+    mut env: JNIEnv,
+    _class: JClass,
+    content: JString,
+) -> jstring {
+    let input = env
+        .get_string(&content)
+        .map_err(|_| "Invalid QR content")
+        .and_then(|value| generate_qr_svg(value.to_str().unwrap_or_default()));
+    let output = match input {
+        Ok(svg) => svg,
         Err(error) => serde_json::json!({"error": error}).to_string(),
     };
     env.new_string(output)
