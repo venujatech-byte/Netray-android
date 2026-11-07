@@ -58,6 +58,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.TimeUnit
 
 private val Background = Color(0xFF0B0E13)
@@ -146,13 +150,9 @@ private fun NetrayScreen() {
                     if (profile != null) {
                         connectedPinging = true
                         val result = withContext(Dispatchers.IO) {
-                            runCatching {
-                                val start = android.os.SystemClock.elapsedRealtime()
-                                java.net.Socket().use { it.connect(java.net.InetSocketAddress(profile.server, profile.port), 3000) }
-                                android.os.SystemClock.elapsedRealtime() - start
-                            }.getOrElse { -1L }
+                            httpPing(profile.server, profile.port)
                         }
-                        connectedPingMs = if (result > 0) result else null
+                        connectedPingMs = if (result.endsWith(" ms")) result.removeSuffix(" ms").toLongOrNull() else null
                         connectedPinging = false
                     }
                 }
@@ -369,11 +369,7 @@ private fun NetrayScreen() {
                                                 pinging[profile.id] = true
                                                 pingResults.remove(profile.id)
                                                 val result = withContext(Dispatchers.IO) {
-                                                    runCatching {
-                                                        val start = android.os.SystemClock.elapsedRealtime()
-                                                        java.net.Socket().use { it.connect(java.net.InetSocketAddress(profile.server, profile.port), 3000) }
-                                                        "TCP ${android.os.SystemClock.elapsedRealtime() - start} ms"
-                                                    }.getOrElse { "Failed" }
+                                                    httpPing(profile.server, profile.port)
                                                 }
                                                 pingResults[profile.id] = result
                                                 pinging[profile.id] = false
@@ -747,4 +743,31 @@ private fun generateShareLink(link: String, remark: String): String {
         }
     }
     return if (trimmed.contains("#")) trimmed else "vless://$trimmed#$encodedRemark"
+}
+
+/// Mirrors the Linux reference's latency::response_latency: performs an HTTP GET
+/// to gstatic.com/generate_204 through the tunnel/proxy and measures round-trip time.
+private fun httpPing(host: String, port: Int, timeoutMs: Int = 5000): String {
+    return runCatching {
+        val start = android.os.SystemClock.elapsedRealtime()
+        val url = URL("http://$host:$port/generate_204")
+        val conn = (url.openConnection() as HttpURLConnection).apply {
+            connectTimeout = timeoutMs
+            readTimeout = timeoutMs
+            useCaches = false
+            setRequestProperty("Host", host)
+            setRequestProperty("Cache-Control", "no-cache")
+            setRequestProperty("Connection", "close")
+        }
+        try {
+            val code = conn.responseCode
+            if (code == 204) {
+                "${android.os.SystemClock.elapsedRealtime() - start} ms"
+            } else {
+                "Failed (HTTP $code)"
+            }
+        } finally {
+            conn.disconnect()
+        }
+    }.getOrElse { "Failed" }
 }
