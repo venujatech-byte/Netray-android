@@ -63,6 +63,19 @@ class ConfigParserTest {
     }
 
     @Test
+    fun importParserHandlesSpaceSeparatedLinksAndBase64Subscriptions() {
+        val vless = ConfigParserRouter.serialize(validDraft(ProtocolKind.VLESS))
+        val socks = ConfigParserRouter.serialize(validDraft(ProtocolKind.SOCKS))
+        val spaced = ConfigParserRouter.parseMany("$vless $socks")
+        assertEquals(2, spaced.configs.size)
+
+        val subscription = java.util.Base64.getEncoder().encodeToString("$vless\n$socks".toByteArray())
+        val decoded = ConfigParserRouter.parseMany(subscription)
+        assertEquals(2, decoded.configs.size)
+        assertEquals(0, decoded.skipped)
+    }
+
+    @Test
     fun duplicateKeyUsesProtocolEndpointAndCredential() {
         val original = Profile.fromDraft(validDraft(ProtocolKind.VLESS))
         val sameEndpointAndId = Profile.fromDraft(validDraft(ProtocolKind.VLESS).with(ConfigFieldKeys.REMARKS, "different remark"))

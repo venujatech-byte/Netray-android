@@ -24,6 +24,7 @@
     <string name="discard_changes_message">Your unsaved profile changes will be lost.</string>
     <string name="action_import">Import</string>
     <string name="action_import_link">Import link/URL</string>
+    <string name="action_import_clipboard">Import from clipboard</string>
     <string name="action_export">Export</string>
     <string name="action_open_text_editor">{ } OPEN TEXT EDITOR</string>
     <string name="action_paste">Paste</string>
@@ -86,6 +87,10 @@
     <string name="error_invalid_config">Invalid configuration: %1$s</string>
     <string name="error_duplicate_config">This configuration is already in your list</string>
     <string name="error_empty_import">No supported configurations were found</string>
+    <string name="error_no_supported_config">No supported config found</string>
+    <string name="import_from_clipboard_title">Import from clipboard</string>
+    <string name="instant_import">Instant import</string>
+    <string name="clipboard_config_hint">URI/Link Config</string>
     <string name="error_qr_image">No readable QR code was found in this image</string>
     <string name="import_summary">Imported %1$d, skipped %2$d invalid</string>
     <string name="ssh_help_toast">Tap help icon to see config reference</string>

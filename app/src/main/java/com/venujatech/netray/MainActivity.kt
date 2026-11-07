@@ -40,10 +40,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -144,6 +148,8 @@ private fun NetrayScreen() {
     var menuExpanded by remember { mutableStateOf(false) }
     var addMenuExpanded by remember { mutableStateOf(false) }
     var qrSourceMenuExpanded by remember { mutableStateOf(false) }
+    var importPrefillClipboard by remember { mutableStateOf(true) }
+    var importInProgress by remember { mutableStateOf(false) }
     var addProtocolKey by rememberSaveable { mutableStateOf<String?>(null) }
     var importedDraft by remember { mutableStateOf<ConfigDraft?>(null) }
     var rawDialogVisible by remember { mutableStateOf(false) }
@@ -181,6 +187,8 @@ private fun NetrayScreen() {
     var currentScreen by rememberSaveable { mutableStateOf("configs") }
     var selectedMode by rememberSaveable { mutableIntStateOf(settings.getInt("connection_mode", 0)) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val importFocusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     BackHandler(enabled = drawerState.isOpen || currentScreen != "configs" || editTarget != null || addProtocolKey != null || rawEditorVisible || rawDialogVisible) {
         if (drawerState.isOpen) {
@@ -293,29 +301,51 @@ private fun NetrayScreen() {
         }
     }
 
-    val importConfigText: (String, Boolean) -> Unit = { importText, fromQr ->
+    fun processImportText(
+        importText: String,
+        fromQr: Boolean = false,
+        onError: (String) -> Unit = { Toast.makeText(context, it, Toast.LENGTH_LONG).show() },
+        onAccepted: () -> Unit = {}
+    ) {
         scope.launch {
             val batch = withContext(Dispatchers.Default) { ConfigParserRouter.parseMany(importText) }
             if (batch.configs.isEmpty()) {
                 val message = if (fromQr) context.getString(R.string.qr_unsupported_config)
                 else batch.errors.firstOrNull() ?: context.getString(R.string.error_empty_import)
-                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                onError(message)
             } else if (batch.configs.size == 1) {
                 val draft = batch.configs.single()
-                val profile = runCatching { Profile.fromDraft(draft) }.getOrNull()
-                if (profile != null && profiles.any { it.duplicateKey == profile.duplicateKey }) {
-                    Toast.makeText(context, R.string.error_duplicate_config, Toast.LENGTH_LONG).show()
-                } else {
-                    openDraft(draft)
-                    if (batch.skipped > 0) Toast.makeText(context, context.getString(R.string.import_summary, 0, batch.skipped), Toast.LENGTH_LONG).show()
-                }
+                runCatching { Profile.fromDraft(draft) }
+                    .onFailure { onError(it.message ?: context.getString(R.string.error_invalid_config, draft.protocol.key)) }
+                    .onSuccess { profile ->
+                        if (profiles.any { it.duplicateKey == profile.duplicateKey }) {
+                            onError(context.getString(R.string.error_duplicate_config))
+                        } else {
+                            openDraft(draft)
+                            onAccepted()
+                            if (batch.skipped > 0) Toast.makeText(context, context.getString(R.string.import_summary, 0, batch.skipped), Toast.LENGTH_LONG).show()
+                        }
+                    }
             } else {
+                if (!storeReady) {
+                    onError("Saved profiles are unavailable; restart before importing.")
+                    return@launch
+                }
                 val keys = profiles.mapTo(mutableSetOf()) { it.duplicateKey }
                 val additions = mutableListOf<Profile>()
                 var skipped = batch.skipped
+                var validParsed = 0
                 batch.configs.forEach { draft ->
                     val profile = runCatching { Profile.fromDraft(draft) }.getOrNull()
-                    if (profile == null || !keys.add(profile.duplicateKey)) skipped++ else additions += profile
+                    if (profile == null) skipped++
+                    else {
+                        validParsed++
+                        if (!keys.add(profile.duplicateKey)) skipped++ else additions += profile
+                    }
+                }
+                if (validParsed == 0) {
+                    onError(batch.errors.firstOrNull() ?: context.getString(R.string.error_no_supported_config))
+                    return@launch
                 }
                 if (additions.isNotEmpty() && storeReady) {
                     try {
@@ -326,13 +356,29 @@ private fun NetrayScreen() {
                     } catch (cancelled: kotlinx.coroutines.CancellationException) {
                         throw cancelled
                     } catch (_: Exception) {
-                        skipped += additions.size
+                        onError("Could not securely save imported profiles; existing profiles were preserved.")
+                        return@launch
                     }
                 } else if (additions.isNotEmpty()) {
                     skipped += additions.size
                 }
-                Toast.makeText(context, context.getString(R.string.import_summary, additions.size - (skipped - batch.skipped), skipped), Toast.LENGTH_LONG).show()
+                val importedCount = additions.size
+                Toast.makeText(context, context.getString(R.string.import_summary, importedCount, skipped), Toast.LENGTH_LONG).show()
+                onAccepted()
             }
+        }
+    }
+
+    val importConfigText: (String, Boolean) -> Unit = { text, fromQr -> processImportText(text, fromQr) }
+
+    LaunchedEffect(showImport, importPrefillClipboard) {
+        if (showImport) {
+            if (importPrefillClipboard && link.isBlank()) {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                link = clipboard.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
+            }
+            importFocusRequester.requestFocus()
+            keyboardController?.show()
         }
     }
 
@@ -661,13 +707,17 @@ private fun NetrayScreen() {
                                     }
                                 }
                                 IconButton(
-                                    onClick = { showImport = true },
+                                    onClick = {
+                                        importPrefillClipboard = true
+                                        importError = ""
+                                        showImport = true
+                                    },
                                     enabled = storeReady,
                                     modifier = Modifier.size(40.dp)
                                 ) {
                                     Icon(
-                                        painter = painterResource(R.drawable.ic_lucide_link),
-                                        contentDescription = stringResource(R.string.action_import_link),
+                                        painter = painterResource(R.drawable.ic_lucide_clipboard_paste),
+                                        contentDescription = stringResource(R.string.action_import_clipboard),
                                         tint = MaterialTheme.colorScheme.onBackground,
                                         modifier = Modifier.size(18.dp)
                                     )
@@ -699,16 +749,21 @@ private fun NetrayScreen() {
                                     DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                                         DropdownMenuItem(
                                             text = { Text(stringResource(R.string.action_import_link)) },
-                                            onClick = { menuExpanded = false; showImport = true }
+                                            onClick = {
+                                                menuExpanded = false
+                                                importPrefillClipboard = false
+                                                link = ""
+                                                importError = ""
+                                                showImport = true
+                                            }
                                         )
                                         DropdownMenuItem(
                                             text = { Text(stringResource(R.string.action_paste)) },
                                             onClick = {
                                                 menuExpanded = false
-                                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                                val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
-                                                if (text.isBlank()) Toast.makeText(context, R.string.error_empty_import, Toast.LENGTH_SHORT).show()
-                                                else importConfigText(text, false)
+                                                importPrefillClipboard = true
+                                                importError = ""
+                                                showImport = true
                                             }
                                         )
                                         DropdownMenuItem(
@@ -930,18 +985,73 @@ private fun NetrayScreen() {
     )
 
     if (showImport) AlertDialog(
-        onDismissRequest = { showImport = false; importError = "" },
-        title = { Text(stringResource(R.string.action_import_link)) },
-        text = { Column {
-            OutlinedTextField(link, { link = it; importError = "" }, label = { Text("Link or config text") }, minLines = 3)
-            if (importError.isNotEmpty()) Text(importError, color = MaterialTheme.colorScheme.error)
-        } },
-        confirmButton = { TextButton(onClick = {
-            if (link.isBlank()) importError = context.getString(R.string.error_empty_import)
-            else { val text = link; showImport = false; link = ""; importConfigText(text, false) }
-        }) { Text(stringResource(R.string.action_import)) } },
-        dismissButton = { TextButton(onClick = { showImport = false; link = ""; importError = "" }) { Text(stringResource(R.string.action_cancel)) } },
-        containerColor = MaterialTheme.colorScheme.surface
+        onDismissRequest = { },
+        title = { Text(stringResource(R.string.import_from_clipboard_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(
+                        checked = instantImport,
+                        onCheckedChange = { enabled ->
+                            instantImport = enabled
+                            settings.edit().putBoolean("instant_import", enabled).apply()
+                        }
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(stringResource(R.string.instant_import), color = MaterialTheme.colorScheme.onSurface)
+                }
+                TextField(
+                    value = link,
+                    onValueChange = { link = it; importError = "" },
+                    modifier = Modifier.fillMaxWidth().height(106.dp).focusRequester(importFocusRequester),
+                    label = { Text(stringResource(R.string.clipboard_config_hint)) },
+                    minLines = 4,
+                    maxLines = 5,
+                    enabled = !importInProgress,
+                    isError = importError.isNotBlank(),
+                    supportingText = importError.takeIf(String::isNotBlank)?.let { ({ Text(it) }) },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color(0xFF191C24),
+                        unfocusedContainerColor = Color(0xFF191C24),
+                        focusedIndicatorColor = Color(0xFF343844),
+                        unfocusedIndicatorColor = Color(0xFF343844)
+                    )
+                )
+            }
+        },
+        confirmButton = {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                TextButton(
+                    onClick = { showImport = false; importInProgress = false; link = ""; importError = "" },
+                    enabled = !importInProgress
+                ) { Text(stringResource(R.string.action_cancel), color = Color(0xFFFF8075)) }
+                Button(
+                    onClick = {
+                        val text = link.trim()
+                        if (text.isNotEmpty() && !importInProgress) {
+                            importInProgress = true
+                            processImportText(
+                                importText = text,
+                                onError = { message -> importError = message; importInProgress = false },
+                                onAccepted = { showImport = false; link = ""; importError = ""; importInProgress = false }
+                            )
+                        }
+                    },
+                    enabled = link.isNotBlank() && !importInProgress,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF8075), contentColor = Color.White),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    if (importInProgress) CircularProgressIndicator(Modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                    else Text(stringResource(R.string.action_import))
+                }
+            }
+        },
+        dismissButton = {},
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(20.dp),
+        properties = DialogProperties(dismissOnClickOutside = false, usePlatformDefaultWidth = true)
     )
 
     if (notificationError.isNotEmpty()) AlertDialog(

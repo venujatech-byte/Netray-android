@@ -49,9 +49,14 @@ object ConfigParserRouter {
     }
 
     fun parseMany(text: String): ImportBatch {
-        val input = text.trim()
+        var input = text.trim()
         if (input.isEmpty()) return ImportBatch(emptyList(), 0, listOf("Import is empty"))
         if (input.length > MAX_IMPORT_CHARS) return ImportBatch(emptyList(), 1, listOf("Import file is too large"))
+
+        if (!looksLikeConfig(input)) {
+            val decoded = runCatching { decodeBase64(input) }.getOrNull()?.trim().orEmpty()
+            if (decoded.isNotBlank() && looksLikeConfig(decoded)) input = decoded
+        }
 
         val candidates = runCatching {
             if (input.startsWith("[")) {
@@ -66,7 +71,7 @@ object ConfigParserRouter {
             } else if (input.startsWith("{")) {
                 listOf(input)
             } else {
-                input.lineSequence().map(String::trim).filter(String::isNotEmpty).toList()
+                splitConfigEntries(input)
             }
         }.getOrElse { return ImportBatch(emptyList(), 1, listOf("Invalid JSON import")) }
 
@@ -122,8 +127,23 @@ object ConfigParserRouter {
     private fun parser(protocol: ProtocolKind): ProtocolConfigParser =
         parsers[protocol] ?: error("No config parser for ${protocol.key}")
 
+    private fun looksLikeConfig(text: String): Boolean = text.trimStart().let { it.startsWith("{") || it.startsWith("[") } ||
+        SCHEME_REGEX.containsMatchIn(text)
+
+    private fun splitConfigEntries(text: String): List<String> {
+        return text.lineSequence().flatMap { line ->
+            val starts = SCHEME_REGEX.findAll(line).map { it.range.first }.toList()
+            if (starts.isEmpty()) sequenceOf(line.trim()).filter(String::isNotEmpty)
+            else starts.mapIndexed { index, start ->
+                val end = starts.getOrNull(index + 1) ?: line.length
+                line.substring(start, end).trim()
+            }.asSequence().filter(String::isNotEmpty)
+        }.toList()
+    }
+
     private const val MAX_CONFIG_CHARS = 1_048_576
     private const val MAX_IMPORT_CHARS = 4_194_304
+    private val SCHEME_REGEX = Regex("(?i)(?:vmess|vless|trojan|ss|ssr|socks5?|hysteria2|hy2|wireguard|ssh|dnstt\\+ssh|dnstt)://")
 }
 
 private object VmessConfigParser : ProtocolConfigParser {
