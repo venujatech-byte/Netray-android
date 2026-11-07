@@ -346,7 +346,8 @@ private fun NetrayScreen() {
                                         onSelect = { selectedId = profile.id }, onDelete = { deleteTarget = profile },
                                         onEdit = { editLink = profile.link; editTarget = profile },
                                         onShare = {
-                                            val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, profile.link)
+                                            val shareLink = generateShareLink(profile.link, profile.name)
+                                            val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, shareLink)
                                             context.startActivity(Intent.createChooser(send, "Share VLESS profile"))
                                         })
                                 }
@@ -623,3 +624,19 @@ private fun startTunnel(context: android.content.Context, profileId: String?, di
 private fun formatUptime(seconds: Long): String = "%02d:%02d:%02d".format(
     TimeUnit.SECONDS.toHours(seconds), TimeUnit.SECONDS.toMinutes(seconds) % 60, seconds % 60
 )
+
+/// Mirrors the Linux reference's generate_share_link: if the URI has no fragment,
+/// append the profile name as a remark so the link can be re-imported with its name.
+private fun generateShareLink(link: String, remark: String): String {
+    val trimmed = link.trim()
+    if (trimmed.isEmpty()) return trimmed
+    val encodedRemark = java.net.URLEncoder.encode(if (remark.isNotBlank()) remark else "Netray-Config", "UTF-8")
+    val knownSchemes = listOf("vless://", "vmess://", "trojan://", "ss://", "socks://", "socks5://",
+        "wireguard://", "wg://", "hy2://", "hysteria2://", "ssr://", "ssh://", "dnstt+ssh://", "http://", "https://")
+    for (scheme in knownSchemes) {
+        if (trimmed.startsWith(scheme, ignoreCase = true)) {
+            return if (trimmed.contains("#")) trimmed else "$trimmed#$encodedRemark"
+        }
+    }
+    return if (trimmed.contains("#")) trimmed else "vless://$trimmed#$encodedRemark"
+}
