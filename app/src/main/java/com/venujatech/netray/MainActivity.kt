@@ -100,6 +100,8 @@ private fun NetrayScreen() {
     val settings = remember { context.getSharedPreferences("settings", 0) }
     var themeMode by rememberSaveable { mutableStateOf(settings.getString("theme_mode", "system") ?: "system") }
     var uptime by remember { mutableLongStateOf(0) }
+    var connectedPingMs by remember { mutableStateOf<Long?>(null) }
+    var connectedPinging by remember { mutableStateOf(false) }
     val state by NetrayVpnService.state.collectAsStateWithLifecycle()
     val vpn = state is NetrayVpnService.State.Connected
     val busy = state is NetrayVpnService.State.Connecting || state is NetrayVpnService.State.Stopping
@@ -133,6 +135,32 @@ private fun NetrayScreen() {
                 uptime = (android.os.SystemClock.elapsedRealtime() - NetrayVpnService.connectedAt) / 1000
                 delay(1000)
             }
+        }
+    }
+
+    LaunchedEffect(state) {
+        if (vpn) {
+            while (true) {
+                if (selectedId.isNotBlank() && !connectedPinging) {
+                    val profile = profiles.firstOrNull { it.id == selectedId }
+                    if (profile != null) {
+                        connectedPinging = true
+                        val result = withContext(Dispatchers.IO) {
+                            runCatching {
+                                val start = android.os.SystemClock.elapsedRealtime()
+                                java.net.Socket().use { it.connect(java.net.InetSocketAddress(profile.server, profile.port), 3000) }
+                                android.os.SystemClock.elapsedRealtime() - start
+                            }.getOrElse { -1L }
+                        }
+                        connectedPingMs = if (result > 0) result else null
+                        connectedPinging = false
+                    }
+                }
+                delay(5000)
+            }
+        } else {
+            connectedPingMs = null
+            connectedPinging = false
         }
     }
 
@@ -372,7 +400,10 @@ private fun NetrayScreen() {
 
                             Row(Modifier.fillMaxWidth().padding(bottom = 14.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                 val status = when (state) {
-                                    NetrayVpnService.State.Connected -> "CONNECTED · ${formatUptime(uptime)}"
+                                    NetrayVpnService.State.Connected -> {
+                                        val pingPart = connectedPingMs?.let { " · ${it} ms" }.orEmpty()
+                                        "CONNECTED · ${formatUptime(uptime)}$pingPart"
+                                    }
                                     NetrayVpnService.State.Connecting -> "CONNECTING…"
                                     NetrayVpnService.State.Stopping -> "STOPPING…"
                                     is NetrayVpnService.State.Error -> "CONNECTION ERROR"
