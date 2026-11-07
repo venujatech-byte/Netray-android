@@ -58,6 +58,7 @@ import com.venujatech.netray.proxy.NetrayProxyService
 import com.venujatech.netray.proxy.ProxyConfig
 import com.venujatech.netray.ui.AboutScreen
 import com.venujatech.netray.ui.CheckIpScreen
+import com.venujatech.netray.ui.EditVlessScreen
 import com.venujatech.netray.ui.LogsScreen
 import com.venujatech.netray.ui.QrScannerScreen
 import com.venujatech.netray.ui.SettingsScreen
@@ -123,8 +124,8 @@ private fun NetrayScreen() {
     var notificationError by rememberSaveable { mutableStateOf("") }
     var deleteTarget by remember { mutableStateOf<Profile?>(null) }
     var editTarget by remember { mutableStateOf<Profile?>(null) }
-    var editLink by rememberSaveable { mutableStateOf("") }
     var editError by rememberSaveable { mutableStateOf("") }
+    var editSaving by remember { mutableStateOf(false) }
     var shareTarget by remember { mutableStateOf<Profile?>(null) }
     var shareLink by remember { mutableStateOf("") }
     var shareCopied by remember { mutableStateOf(false) }
@@ -166,9 +167,11 @@ private fun NetrayScreen() {
     var selectedMode by rememberSaveable { mutableIntStateOf(settings.getInt("connection_mode", 0)) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
 
-    BackHandler(enabled = drawerState.isOpen || currentScreen != "configs") {
+    BackHandler(enabled = drawerState.isOpen || currentScreen != "configs" || editTarget != null) {
         if (drawerState.isOpen) {
             scope.launch { drawerState.close() }
+        } else if (editTarget != null) {
+            if (!editSaving) { editTarget = null; editError = "" }
         } else {
             currentScreen = "configs"
         }
@@ -184,43 +187,50 @@ private fun NetrayScreen() {
             .onFailure { storageError = "Saved profiles could not be read. They have been kept unchanged." }
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(state, proxyState, lifecycle) {
-        if (connected) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+    LaunchedEffect(state, proxyState, lifecycle, currentScreen, editTarget) {
+        if (connected && currentScreen == "configs" && editTarget == null) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
                 val startedAt = if (vpn) NetrayVpnService.connectedAt else NetrayProxyService.connectedAt
                 uptime = (android.os.SystemClock.elapsedRealtime() - startedAt) / 1000
                 delay(1000)
             }
-        } else {
+        } else if (!connected) {
             uptime = 0
         }
     }
 
-    LaunchedEffect(state, proxyState) {
+    LaunchedEffect(state, proxyState, currentScreen, editTarget) {
         val isConnected = vpn || proxyConnected
-        if (isConnected) {
-            while (true) {
-                if (selectedId.isNotBlank() && !connectedPinging) {
-                    val profile = profiles.firstOrNull { it.id == selectedId }
-                    if (profile != null) {
-                        connectedPinging = true
-                        val result = withContext(Dispatchers.IO) {
-                            if (proxyConnected) {
-                                // Ping through the local HTTP proxy inbound
-                                httpPingViaProxy(proxyHttpPort)
-                            } else {
-                                httpPing()
+        if (isConnected && currentScreen == "configs" && editTarget == null) {
+            try {
+                while (true) {
+                    if (selectedId.isNotBlank() && !connectedPinging) {
+                        val profile = profiles.firstOrNull { it.id == selectedId }
+                        if (profile != null) {
+                            connectedPinging = true
+                            try {
+                                val result = withContext(Dispatchers.IO) {
+                                    if (proxyConnected) {
+                                        // Ping through the local HTTP proxy inbound.
+                                        httpPingViaProxy(proxyHttpPort)
+                                    } else {
+                                        httpPing()
+                                    }
+                                }
+                                connectedPingMs = if (result.endsWith(" ms")) result.removeSuffix(" ms").toLongOrNull() else null
+                            } finally {
+                                connectedPinging = false
                             }
                         }
-                        connectedPingMs = if (result.endsWith(" ms")) result.removeSuffix(" ms").toLongOrNull() else null
-                        connectedPinging = false
                     }
+                    delay(5000)
                 }
-                delay(5000)
+            } finally {
+                connectedPinging = false
             }
         } else {
-            connectedPingMs = null
             connectedPinging = false
+            if (!isConnected) connectedPingMs = null
         }
     }
 
@@ -247,7 +257,45 @@ private fun NetrayScreen() {
     val isDark = themeMode == "dark" || (themeMode == "system" && androidx.compose.foundation.isSystemInDarkTheme())
     val colorScheme = colorSchemeForAccent(accentColor, isDark)
     NetrayTheme(themeMode = themeMode, dynamicColor = false, colorScheme = colorScheme) {
-        if (showQrScanner) {
+        if (editTarget != null) {
+            val original = editTarget!!
+            EditVlessScreen(
+                profile = original,
+                saving = editSaving,
+                error = editError,
+                onCancel = { if (!editSaving) { editTarget = null; editError = "" } },
+                onSave = { editedLink ->
+                    runCatching { Profile.parse(editedLink).copy(id = original.id) }
+                        .onFailure { editError = it.message ?: "Invalid VLESS profile" }
+                        .onSuccess { edited ->
+                            scope.launch {
+                                if (!storeReady) {
+                                    editError = "Saved profiles are unavailable; restart before changing them."
+                                    return@launch
+                                }
+                                editSaving = true
+                                editError = ""
+                                try {
+                                    val next = profiles.map { if (it.id == original.id) edited else it }
+                                    withContext(Dispatchers.IO) { store.save(next) }
+                                    profiles.clear()
+                                    profiles.addAll(next)
+                                    selectedId = edited.id
+                                    pingResults.remove(original.id)
+                                    pinging.remove(original.id)
+                                    editTarget = null
+                                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                    throw cancelled
+                                } catch (failure: Exception) {
+                                    editError = "Could not securely save profile; the previous saved profile was preserved."
+                                } finally {
+                                    editSaving = false
+                                }
+                            }
+                        }
+                }
+            )
+        } else if (showQrScanner) {
             QrScannerScreen(
                 onScanResult = { raw ->
                     scope.launch {
@@ -539,7 +587,7 @@ private fun NetrayScreen() {
                                             }
                                         },
                                         onSelect = { selectedId = profile.id }, onDelete = { deleteTarget = profile },
-                                        onEdit = { editLink = profile.link; editTarget = profile },
+                                        onEdit = { editError = ""; editTarget = profile },
                                         onShare = {
                                             shareTarget = profile
                                             shareLink = profile.link
@@ -767,37 +815,6 @@ private fun NetrayScreen() {
         dismissButton = { TextButton(onClick = { showImportConfirm = false; pendingImportProfile = null; importConfirmError = "" }) { Text("Cancel") } },
         containerColor = MaterialTheme.colorScheme.surface
     )
-
-    editTarget?.let { original -> AlertDialog(
-        onDismissRequest = { editTarget = null },
-        title = { Text("Edit VLESS profile") },
-        text = { Column {
-            OutlinedTextField(editLink, { editLink = it; editError = "" }, label = { Text("VLESS link") }, minLines = 3)
-            if (editError.isNotEmpty()) Text(editError, color = MaterialTheme.colorScheme.error)
-        } },
-        confirmButton = { TextButton(onClick = {
-            runCatching { Profile.parse(editLink).copy(id = original.id) }
-                .onSuccess { edited ->
-                    scope.launch {
-                        val next = profiles.map { if (it.id == original.id) edited else it }
-                        runCatching { withContext(Dispatchers.IO) { store.save(next) } }
-                            .onSuccess {
-                                profiles.clear()
-                                profiles.addAll(next)
-                                selectedId = edited.id
-                                pingResults.remove(original.id)
-                                pinging.remove(original.id)
-                                editTarget = null
-                                editError = ""
-                            }
-                            .onFailure { storageError = "Could not save profile changes; the saved file was preserved." }
-                    }
-                }
-                .onFailure { editError = it.message ?: "Invalid VLESS link" }
-        }) { Text("Save") } },
-        dismissButton = { TextButton(onClick = { editTarget = null; editError = "" }) { Text("Cancel") } },
-        containerColor = MaterialTheme.colorScheme.surface
-    ) }
 
     if (notificationError.isNotEmpty()) AlertDialog(
         onDismissRequest = { notificationError = "" },
