@@ -12,12 +12,38 @@ android {
         applicationId = "com.venujatech.netray"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = providers.gradleProperty("versionCode").orElse("1").get().toInt()
+        versionName = providers.gradleProperty("versionName").orElse("1.0.0").get()
+        val selectedAbis = providers.gradleProperty("releaseAbis").orNull
+            ?.split(",")?.map(String::trim)?.filter(String::isNotEmpty)
+            ?: listOf("arm64-v8a", "armeabi-v7a")
+        ndk { abiFilters += selectedAbis }
+        buildConfigField("String", "GITHUB_REPO", "\"venujatech-byte/Netray\"")
+        buildConfigField("boolean", "SELF_UPDATE_ENABLED", providers.gradleProperty("selfUpdateEnabled").orElse("true").get())
     }
 
-    buildFeatures { compose = true }
-    buildTypes { release { isMinifyEnabled = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro") } }
+    buildFeatures { compose = true; buildConfig = true }
+    val keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+    val storePasswordEnv = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+    val keyAliasEnv = System.getenv("ANDROID_KEY_ALIAS")
+    val keyPasswordEnv = System.getenv("ANDROID_KEY_PASSWORD")
+    val hasReleaseSigning = listOf(keystorePath, storePasswordEnv, keyAliasEnv, keyPasswordEnv).all { !it.isNullOrBlank() }
+    if (hasReleaseSigning) {
+        signingConfigs.create("release") {
+            storeFile = file(keystorePath!!)
+            storePassword = storePasswordEnv
+            keyAlias = keyAliasEnv
+            keyPassword = keyPasswordEnv
+        }
+    }
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

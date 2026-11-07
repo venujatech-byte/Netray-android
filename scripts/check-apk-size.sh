@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-apk="${1:-$root/app/build/outputs/apk/release/app-release-unsigned.apk}"
+apk="${1:-}"
+if [[ -z "$apk" ]]; then
+  apk="$root/app/build/outputs/apk/release/app-release-unsigned.apk"
+  [[ -f "$apk" ]] || apk="$root/app/build/outputs/apk/release/app-release.apk"
+fi
 baseline_file="$root/scripts/apk-size-baseline.txt"
 python3 - "$apk" "$baseline_file" <<'PY'
 import os

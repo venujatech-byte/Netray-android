@@ -10,6 +10,8 @@
     <string name="protocol_ssh">SSH</string>
     <string name="protocol_dnstt_ssh">DNSTT + SSH</string>
     <string name="protocol_hysteria2">Hysteria2</string>
+    <string name="app_version">Version %1$s</string>
+    <string name="app_version_short">v%1$s</string>
     <string name="action_add_profile">Add profile</string>
     <string name="action_add_protocol">Add %1$s</string>
     <string name="action_edit_protocol">Edit %1$s</string>

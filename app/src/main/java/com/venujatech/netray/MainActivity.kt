@@ -503,7 +503,7 @@ private fun NetrayScreen() {
                         Spacer(Modifier.width(16.dp))
                         Column {
                             Text("Netray", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                            Text("v0.1.0", style = MaterialTheme.typography.bodySmall, color = palette.textSecondary)
+                            Text(stringResource(R.string.app_version_short, BuildConfig.VERSION_NAME), style = MaterialTheme.typography.bodySmall, color = palette.textSecondary)
                         }
                     }
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
@@ -557,6 +557,7 @@ private fun NetrayScreen() {
                 "settings" -> SettingsScreen(
                     onOpenDrawer = { scope.launch { drawerState.open() } },
                     settings = settings,
+                    appVersion = BuildConfig.VERSION_NAME,
                     themeMode = themeMode,
                     onThemeChange = { mode ->
                         themeMode = mode
@@ -622,7 +623,8 @@ private fun NetrayScreen() {
                     onViewLogs = { currentScreen = "logs" }
                 )
                 "about" -> AboutScreen(
-                    onOpenDrawer = { scope.launch { drawerState.open() } }
+                    onOpenDrawer = { scope.launch { drawerState.open() } },
+                    appVersion = BuildConfig.VERSION_NAME
                 )
                 else -> {
                     var swipeDrag by remember { mutableFloatStateOf(0f) }

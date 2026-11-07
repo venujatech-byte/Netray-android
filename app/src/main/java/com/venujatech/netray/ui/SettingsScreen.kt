@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.venujatech.netray.R
 import com.venujatech.netray.ui.theme.LocalNetrayPalette
@@ -27,6 +28,7 @@ import com.venujatech.netray.ui.theme.onColorFor
 fun SettingsScreen(
     onOpenDrawer: () -> Unit,
     settings: SharedPreferences,
+    appVersion: String,
     themeMode: String,
     onThemeChange: (String) -> Unit,
     connectionMode: Int,
@@ -243,7 +245,7 @@ fun SettingsScreen(
                 SettingsCard(title = "App Updates") {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(
-                            text = "Version 0.1.0",
+                            text = stringResource(R.string.app_version, appVersion),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

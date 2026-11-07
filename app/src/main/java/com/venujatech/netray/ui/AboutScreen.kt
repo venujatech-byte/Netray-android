@@ -10,13 +10,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.venujatech.netray.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AboutScreen(
-    onOpenDrawer: () -> Unit
+    onOpenDrawer: () -> Unit,
+    appVersion: String
 ) {
     Scaffold(
         topBar = {
@@ -49,7 +51,7 @@ fun AboutScreen(
             )
 
             Text("Netray", style = MaterialTheme.typography.headlineMedium)
-            Text("Version 0.1.0", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.app_version, appVersion), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
             Spacer(Modifier.height(8.dp))
 
@@ -77,4 +79,3 @@ fun AboutScreen(
         }
     }
 }
-
