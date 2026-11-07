@@ -435,7 +435,15 @@ private fun NetrayScreen() {
                     scope.launch {
                         val next = profiles.map { if (it.id == original.id) edited else it }
                         runCatching { withContext(Dispatchers.IO) { store.save(next) } }
-                            .onSuccess { profiles.clear(); profiles.addAll(next); editTarget = null; editError = "" }
+                            .onSuccess {
+                                profiles.clear()
+                                profiles.addAll(next)
+                                selectedId = edited.id
+                                pingResults.remove(original.id)
+                                pinging.remove(original.id)
+                                editTarget = null
+                                editError = ""
+                            }
                             .onFailure { storageError = "Could not save profile changes; the saved file was preserved." }
                     }
                 }
