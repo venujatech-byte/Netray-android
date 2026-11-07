@@ -676,7 +676,7 @@ private fun NetrayScreen() {
                                         CircularProgressIndicator(modifier = Modifier.size(28.dp), color = Color.White, strokeWidth = 2.5.dp)
                                     } else {
                                         Icon(
-                                            painter = painterResource(R.drawable.ic_lucide_power),
+                                            painter = painterResource(if (connected) R.drawable.ic_stop else R.drawable.ic_start),
                                             contentDescription = if (connected) "Disconnect" else "Connect",
                                             modifier = Modifier.size(28.dp)
                                         )
