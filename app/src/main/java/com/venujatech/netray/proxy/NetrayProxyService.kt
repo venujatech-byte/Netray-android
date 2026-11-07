@@ -69,15 +69,12 @@ class NetrayProxyService : Service() {
         Log.i("NetrayProxy", "Proxy connection requested profile=$profileId socks=$socksPort http=$httpPort")
         state.value = State.Connecting
 
-        val fgsType = if (Build.VERSION.SDK_INT >= 34) {
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-        } else {
-            0
-        }
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(NOTIFICATION_ID, notification("Connecting"), fgsType)
-        } else if (Build.VERSION.SDK_INT >= 28) {
-            startForeground(NOTIFICATION_ID, notification("Connecting"), fgsType)
+        if (Build.VERSION.SDK_INT >= 29) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification("Connecting"),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            )
         } else {
             startForeground(NOTIFICATION_ID, notification("Connecting"))
         }
