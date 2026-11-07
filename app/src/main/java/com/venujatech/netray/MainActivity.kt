@@ -293,11 +293,13 @@ private fun NetrayScreen() {
         }
     }
 
-    val importConfigText: (String) -> Unit = { importText ->
+    val importConfigText: (String, Boolean) -> Unit = { importText, fromQr ->
         scope.launch {
             val batch = withContext(Dispatchers.Default) { ConfigParserRouter.parseMany(importText) }
             if (batch.configs.isEmpty()) {
-                Toast.makeText(context, batch.errors.firstOrNull() ?: context.getString(R.string.error_empty_import), Toast.LENGTH_LONG).show()
+                val message = if (fromQr) context.getString(R.string.qr_unsupported_config)
+                else batch.errors.firstOrNull() ?: context.getString(R.string.error_empty_import)
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
             } else if (batch.configs.size == 1) {
                 val draft = batch.configs.single()
                 val profile = runCatching { Profile.fromDraft(draft) }.getOrNull()
@@ -359,14 +361,14 @@ private fun NetrayScreen() {
             runCatching {
                 if (context.contentResolver.getType(uri)?.startsWith("image/") == true) readQrFromImage(context, uri)
                 else readImportFile(context, uri)
-            }.onSuccess(importConfigText)
+            }.onSuccess { importConfigText(it, false) }
                 .onFailure { Toast.makeText(context, it.message ?: context.getString(R.string.error_empty_import), Toast.LENGTH_LONG).show() }
         }
     }
     val qrImagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) scope.launch {
             runCatching { readQrFromImage(context, uri) }
-                .onSuccess(importConfigText)
+                .onSuccess { importConfigText(it, true) }
                 .onFailure { Toast.makeText(context, it.message ?: context.getString(R.string.error_empty_import), Toast.LENGTH_LONG).show() }
         }
     }
@@ -416,7 +418,8 @@ private fun NetrayScreen() {
             )
         } else if (showQrScanner) {
             QrScannerScreen(
-                onScanResult = { raw -> showQrScanner = false; importConfigText(raw) },
+                onScanResult = { raw -> showQrScanner = false; importConfigText(raw, true) },
+                onImageScanResults = { raw -> showQrScanner = false; importConfigText(raw.joinToString("\n"), true) },
                 onClose = { showQrScanner = false }
             )
         } else {
@@ -705,7 +708,7 @@ private fun NetrayScreen() {
                                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                                 val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
                                                 if (text.isBlank()) Toast.makeText(context, R.string.error_empty_import, Toast.LENGTH_SHORT).show()
-                                                else importConfigText(text)
+                                                else importConfigText(text, false)
                                             }
                                         )
                                         DropdownMenuItem(
@@ -935,7 +938,7 @@ private fun NetrayScreen() {
         } },
         confirmButton = { TextButton(onClick = {
             if (link.isBlank()) importError = context.getString(R.string.error_empty_import)
-            else { val text = link; showImport = false; link = ""; importConfigText(text) }
+            else { val text = link; showImport = false; link = ""; importConfigText(text, false) }
         }) { Text(stringResource(R.string.action_import)) } },
         dismissButton = { TextButton(onClick = { showImport = false; link = ""; importError = "" }) { Text(stringResource(R.string.action_cancel)) } },
         containerColor = MaterialTheme.colorScheme.surface

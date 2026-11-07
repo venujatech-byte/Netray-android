@@ -36,6 +36,7 @@ Request only permissions needed for the implemented features. Explain VPN consen
 | CameraX (camera-core, camera-camera2, camera-lifecycle, camera-view) | 1.3.2 | Apache-2.0 | https://developer.android.com/training/camera | In-app QR scanner preview |
 | ML Kit Barcode Scanning | 17.3.0 | Apache-2.0 | https://developers.google.com/ml-kit | QR code decoding |
 | ZXing Core | 3.5.3 | Apache-2.0 | https://github.com/zxing/zxing | Generate QR codes for profile sharing |
+| AndroidX ExifInterface | 1.4.2 | Apache-2.0 | https://developer.android.com/jetpack/androidx/releases/exifinterface | Read image orientation before decoding imported QR images |
 | `android.permission.CAMERA` | — | platform | Android | Required to open the camera for QR scanning |
 
 Netray's license and Xray's license are separate. Do not remove, rewrite, or imply ownership of upstream notices.

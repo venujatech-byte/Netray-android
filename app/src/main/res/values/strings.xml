@@ -29,6 +29,12 @@
     <string name="action_paste">Paste</string>
     <string name="action_scan_qr">Scan QR code</string>
     <string name="action_scan_qr_image">Import QR image</string>
+    <string name="qr_pick_image_description">Pick QR code from image</string>
+    <string name="qr_torch_on_description">Turn flashlight on</string>
+    <string name="qr_torch_off_description">Turn flashlight off</string>
+    <string name="qr_no_code_in_image">No QR code found in this image</string>
+    <string name="qr_unsupported_config">QR code is not a supported config</string>
+    <string name="qr_image_unreadable">Unable to read this image. Choose another image and try again.</string>
     <string name="action_import_file">Import file</string>
     <string name="field_remarks">Remarks</string>
     <string name="field_address">Address</string>

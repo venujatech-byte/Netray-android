@@ -4,9 +4,13 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
@@ -14,22 +18,31 @@ import androidx.camera.core.Preview
 import androidx.camera.core.UseCase
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.Observer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
+import com.venujatech.netray.R
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -38,6 +51,7 @@ import java.util.concurrent.Executors
 @Composable
 fun QrScannerScreen(
     onScanResult: (String) -> Unit,
+    onImageScanResults: (List<String>) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -49,6 +63,13 @@ fun QrScannerScreen(
     var bound by remember { mutableStateOf(false) }
     var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
     var cameraUseCases by remember { mutableStateOf<List<UseCase>?>(null) }
+    var camera by remember { mutableStateOf<Camera?>(null) }
+    var cameraReady by remember { mutableStateOf(false) }
+    var hasFlash by remember { mutableStateOf(false) }
+    var torchOn by rememberSaveable { mutableStateOf(false) }
+    var decodingImage by remember { mutableStateOf(false) }
+    var imagePickerError by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     val cameraPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -61,6 +82,42 @@ fun QrScannerScreen(
     val executor: ExecutorService = remember { Executors.newSingleThreadExecutor() }
     val barcodeScanner: BarcodeScanner = remember { BarcodeScanning.getClient() }
     val previewView = remember { PreviewView(context) }
+    fun decodePickedImage(uri: Uri) {
+        if (decodingImage) return
+        decodingImage = true
+        scanning = false
+        scope.launch {
+            val result = runCatching { withContext(Dispatchers.IO) { QrImageDecoder.decode(context, uri) } }
+            decodingImage = false
+            result.onSuccess { codes ->
+                if (codes.isEmpty()) {
+                    imagePickerError = context.getString(R.string.qr_no_code_in_image)
+                    scanning = true
+                } else {
+                    camera?.cameraControl?.enableTorch(false)
+                    onImageScanResults(codes)
+                }
+            }.onFailure { failure ->
+                imagePickerError = failure.message ?: context.getString(R.string.qr_image_unreadable)
+                scanning = true
+            }
+        }
+    }
+
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) decodePickedImage(uri)
+    }
+    val imageDocumentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) decodePickedImage(uri)
+    }
+
+    fun pickImage() {
+        if (ActivityResultContracts.PickVisualMedia.isPhotoPickerAvailable(context)) {
+            imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        } else {
+            imageDocumentPicker.launch(arrayOf("image/*"))
+        }
+    }
 
     val denied = cameraDenied
     val err = cameraError
@@ -77,6 +134,31 @@ fun QrScannerScreen(
             }
             cameraUseCases = null
             bound = false
+            camera?.cameraControl?.enableTorch(false)
+            camera = null
+            cameraReady = false
+            torchOn = false
+            executor.shutdown()
+            barcodeScanner.close()
+        }
+    }
+
+    DisposableEffect(lifecycleOwner, camera) {
+        val currentCamera = camera
+        val torchObserver = Observer<Int> { state ->
+            torchOn = state == androidx.camera.core.TorchState.ON
+        }
+        currentCamera?.cameraInfo?.torchState?.observe(lifecycleOwner, torchObserver)
+        val lifecycleObserver = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
+                currentCamera?.cameraControl?.enableTorch(false)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(lifecycleObserver)
+        onDispose {
+            currentCamera?.cameraInfo?.torchState?.removeObserver(torchObserver)
+            lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
+            currentCamera?.cameraControl?.enableTorch(false)
         }
     }
 
@@ -87,7 +169,7 @@ fun QrScannerScreen(
     }
 
     LaunchedEffect(cameraProviderFuture, scanning, cameraDenied, cameraError, previewView) {
-        if (!scanning || cameraDenied || cameraError != null || bound) return@LaunchedEffect
+        if (!scanning || cameraDenied || cameraError != null || bound || decodingImage) return@LaunchedEffect
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) return@LaunchedEffect
         try {
             val provider = withContext(Dispatchers.IO) { cameraProviderFuture.get() }
@@ -105,23 +187,26 @@ fun QrScannerScreen(
                 val inputImage = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
                 val task = barcodeScanner.process(inputImage)
                 task.addOnSuccessListener { barcodes ->
-                    val hit = barcodes.firstOrNull { it.rawValue?.isNotBlank() == true && it.rawValue!!.contains("://") }
-                    if (hit != null && scanning) {
+                    val hits = barcodes.mapNotNull { it.rawValue?.takeIf(String::isNotBlank) }.distinct()
+                    if (hits.isNotEmpty() && scanning) {
                         scanning = false
-                        val raw = hit.rawValue ?: return@addOnSuccessListener
-                        onScanResult(raw)
+                        camera?.cameraControl?.enableTorch(false)
+                        onScanResult(hits.joinToString("\n"))
                     }
                     imageProxy.close()
                 }
                 task.addOnFailureListener { imageProxy.close() }
             }
-            provider.bindToLifecycle(
+            val boundCamera = provider.bindToLifecycle(
                 lifecycleOwner,
                 CameraSelector.DEFAULT_BACK_CAMERA,
                 preview,
                 analysis
             )
             cameraProvider = provider
+            camera = boundCamera
+            hasFlash = boundCamera.cameraInfo.hasFlashUnit()
+            cameraReady = true
             cameraUseCases = listOf(preview, analysis)
             bound = true
         } catch (e: Exception) {
@@ -129,7 +214,7 @@ fun QrScannerScreen(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    Column(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         TopAppBar(
             modifier = Modifier.fillMaxWidth(),
             title = { Text("Scan QR code") },
@@ -170,6 +255,38 @@ fun QrScannerScreen(
                     OutlinedButton(onClick = { cameraError = null; bound = false }) { Text("Retry") }
                 }
             }
+            if (decodingImage) {
+                CircularProgressIndicator(
+                    modifier = Modifier.align(Alignment.Center),
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            Row(
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 28.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ScannerControlButton(
+                    icon = R.drawable.ic_lucide_image,
+                    contentDescription = stringResource(R.string.qr_pick_image_description),
+                    enabled = !decodingImage,
+                    background = Color(0x99000000),
+                    tint = Color.White,
+                    onClick = { pickImage() }
+                )
+                if (hasFlash) {
+                    ScannerControlButton(
+                        icon = if (torchOn) R.drawable.ic_lucide_flashlight else R.drawable.ic_lucide_flashlight_off,
+                        contentDescription = stringResource(if (torchOn) R.string.qr_torch_off_description else R.string.qr_torch_on_description),
+                        enabled = cameraReady && camera != null && !decodingImage,
+                        background = if (torchOn) MaterialTheme.colorScheme.primary else Color(0x99000000),
+                        tint = if (torchOn) MaterialTheme.colorScheme.onPrimary else Color.White,
+                        onClick = { camera?.cameraControl?.enableTorch(torchOn.not()) }
+                    )
+                }
+            }
         }
         Box(
             modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
@@ -185,5 +302,30 @@ fun QrScannerScreen(
                 }
             }
         }
+    }
+    imagePickerError?.let { error ->
+        LaunchedEffect(error) {
+            Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+            imagePickerError = null
+        }
+    }
+}
+
+@Composable
+private fun ScannerControlButton(
+    icon: Int,
+    contentDescription: String,
+    enabled: Boolean,
+    background: Color,
+    tint: Color,
+    onClick: () -> Unit
+) {
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.size(56.dp),
+        colors = IconButtonDefaults.iconButtonColors(containerColor = background, contentColor = tint)
+    ) {
+        Icon(painterResource(icon), contentDescription = contentDescription, tint = tint, modifier = Modifier.size(26.dp))
     }
 }
