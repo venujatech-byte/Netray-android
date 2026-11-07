@@ -5,8 +5,10 @@ import android.content.ClipboardManager
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -48,6 +50,8 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.venujatech.netray.profiles.Profile
 import com.venujatech.netray.profiles.ProfileStore
 import com.venujatech.netray.profiles.NativeBackend
+import com.venujatech.netray.proxy.NetrayProxyService
+import com.venujatech.netray.proxy.ProxyConfig
 import com.venujatech.netray.ui.AboutScreen
 import com.venujatech.netray.ui.CheckIpScreen
 import com.venujatech.netray.ui.LogsScreen
@@ -113,12 +117,19 @@ private fun NetrayScreen() {
     var connectedPingMs by remember { mutableStateOf<Long?>(null) }
     var connectedPinging by remember { mutableStateOf(false) }
     val state by NetrayVpnService.state.collectAsStateWithLifecycle()
+    val proxyState by NetrayProxyService.state.collectAsStateWithLifecycle()
     val vpn = state is NetrayVpnService.State.Connected
+    val proxyConnected = proxyState is NetrayProxyService.State.Connected
+    val connected = vpn || proxyConnected
     val busy = state is NetrayVpnService.State.Connecting || state is NetrayVpnService.State.Stopping
+    val proxyBusy = proxyState is NetrayProxyService.State.Connecting || proxyState is NetrayProxyService.State.Stopping
+    val anyBusy = busy || proxyBusy
     val selectedProfile = profiles.firstOrNull { it.id == selectedId }
+    var activeMode by rememberSaveable { mutableIntStateOf(0) } // 0=TUN, 1=Proxy
+    var proxyHttpPort by remember { mutableIntStateOf(ProxyConfig.DEFAULT_HTTP_PORT) }
 
     var currentScreen by rememberSaveable { mutableStateOf("configs") }
-    var selectedMode by rememberSaveable { mutableIntStateOf(0) }
+    var selectedMode by rememberSaveable { mutableIntStateOf(settings.getInt("connection_mode", 0)) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
 
     BackHandler(enabled = drawerState.isOpen || currentScreen != "configs") {
@@ -139,24 +150,33 @@ private fun NetrayScreen() {
             .onFailure { storageError = "Saved profiles could not be read. They have been kept unchanged." }
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(state, lifecycle) {
-        if (vpn) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+    LaunchedEffect(state, proxyState, lifecycle) {
+        if (connected) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
-                uptime = (android.os.SystemClock.elapsedRealtime() - NetrayVpnService.connectedAt) / 1000
+                val startedAt = if (vpn) NetrayVpnService.connectedAt else NetrayProxyService.connectedAt
+                uptime = (android.os.SystemClock.elapsedRealtime() - startedAt) / 1000
                 delay(1000)
             }
+        } else {
+            uptime = 0
         }
     }
 
-    LaunchedEffect(state) {
-        if (vpn) {
+    LaunchedEffect(state, proxyState) {
+        val isConnected = vpn || proxyConnected
+        if (isConnected) {
             while (true) {
                 if (selectedId.isNotBlank() && !connectedPinging) {
                     val profile = profiles.firstOrNull { it.id == selectedId }
                     if (profile != null) {
                         connectedPinging = true
                         val result = withContext(Dispatchers.IO) {
-                            httpPing(profile.server, profile.port)
+                            if (proxyConnected) {
+                                // Ping through the local HTTP proxy inbound
+                                httpPingViaProxy(proxyHttpPort)
+                            } else {
+                                httpPing()
+                            }
                         }
                         connectedPingMs = if (result.endsWith(" ms")) result.removeSuffix(" ms").toLongOrNull() else null
                         connectedPinging = false
@@ -176,9 +196,14 @@ private fun NetrayScreen() {
         pendingProfileId = ""
     }
     val requestVpnConsent: () -> Unit = {
-        val prepare = VpnService.prepare(context)
-        if (prepare == null) startTunnel(context, selectedId, selectedMode)
-        else { pendingProfileId = selectedId; consent.launch(prepare) }
+        // Proxy mode never touches VpnService API.
+        if (selectedMode == 1) {
+            startProxyTunnel(context, selectedId, selectedMode)
+        } else {
+            val prepare = VpnService.prepare(context)
+            if (prepare == null) startTunnel(context, selectedId, selectedMode)
+            else { pendingProfileId = selectedId; consent.launch(prepare) }
+        }
     }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed ->
         if (allowed) requestVpnConsent()
@@ -278,7 +303,12 @@ private fun NetrayScreen() {
                         themeMode = mode
                         settings.edit().putString("theme_mode", mode).apply()
                     },
-                    vpnBusy = vpn || busy,
+                    connectionMode = selectedMode,
+                    onConnectionModeChange = { mode ->
+                        selectedMode = mode
+                        settings.edit().putInt("connection_mode", mode).apply()
+                    },
+                    vpnBusy = anyBusy,
                     onViewLogs = { currentScreen = "logs" }
                 )
                 "about" -> AboutScreen(
@@ -401,34 +431,21 @@ private fun NetrayScreen() {
                                 }
                             }
 
-                            SingleChoiceSegmentedButtonRow(
-                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 14.dp)
-                            ) {
-                                SegmentedButton(
-                                    selected = selectedMode == 0,
-                                    onClick = { selectedMode = 0 },
-                                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                                    label = { Text("TUN") }
-                                )
-                                SegmentedButton(
-                                    selected = selectedMode == 1,
-                                    onClick = { selectedMode = 1 },
-                                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                                    label = { Text("Proxy") }
-                                )
-                            }
-
                             if (storageError.isNotEmpty()) Text(storageError, color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
                             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
                                 items(profiles, key = { it.id }) { profile ->
-                                    ProfileCard(profile, selected = profile.id == selectedId, connected = vpn || busy, storeReady = storeReady,
+                                    ProfileCard(profile, selected = profile.id == selectedId, connected = connected, storeReady = storeReady,
                                         pingResult = pingResults[profile.id], pinging = pinging[profile.id] == true,
                                         onPing = {
                                             if (pinging[profile.id] != true) scope.launch {
                                                 pinging[profile.id] = true
                                                 pingResults.remove(profile.id)
                                                 val result = withContext(Dispatchers.IO) {
-                                                    httpPing(profile.server, profile.port)
+                                                    if (proxyConnected) {
+                                                        httpPingViaProxy(proxyHttpPort)
+                                                    } else {
+                                                        httpPing()
+                                                    }
                                                 }
                                                 pingResults[profile.id] = result
                                                 pinging[profile.id] = false
@@ -443,46 +460,161 @@ private fun NetrayScreen() {
                                 }
                             }
 
+                            // Proxy mode guidance: shown only when proxy is active
+                            if (proxyConnected && activeMode == 1) {
+                                Card(
+                                    modifier = Modifier.fillMaxWidth()
+                                        .padding(PaddingValues(start = 2.dp, top = 0.dp, end = 2.dp, bottom = 8.dp)),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                                ) {
+                                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                painter = painterResource(R.drawable.ic_lucide_globe),
+                                                contentDescription = "Proxy active",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(
+                                                text = "Proxy mode active",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                                            )
+                                        }
+                                        Text(
+                                            text = "Apps are NOT auto-proxied. Configure each app to use:",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                            Text(
+                                                text = "SOCKS5: 127.0.0.1:${ProxyConfig.DEFAULT_SOCKS_PORT}",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            IconButton(onClick = {
+                                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                clipboard.setPrimaryClip(ClipData.newPlainText("SOCKS5 proxy", "127.0.0.1:${ProxyConfig.DEFAULT_SOCKS_PORT}"))
+                                                Toast.makeText(context, "SOCKS5 address copied", Toast.LENGTH_SHORT).show()
+                                            }) {
+                                                Icon(
+                                                    painter = painterResource(R.drawable.ic_lucide_copy),
+                                                    contentDescription = "Copy SOCKS5 address",
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                            Text(
+                                                text = "HTTP:  127.0.0.1:${proxyHttpPort}",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            IconButton(onClick = {
+                                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                clipboard.setPrimaryClip(ClipData.newPlainText("HTTP proxy", "127.0.0.1:$proxyHttpPort"))
+                                                Toast.makeText(context, "HTTP address copied", Toast.LENGTH_SHORT).show()
+                                            }) {
+                                                Icon(
+                                                    painter = painterResource(R.drawable.ic_lucide_copy),
+                                                    contentDescription = "Copy HTTP address",
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = "Set HTTP proxy in Wi-Fi settings for browsers; set SOCKS5 in Telegram and other apps. TUN mode covers the whole device; proxy mode does not.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            modifier = Modifier.padding(top = 4.dp)
+                                        )
+                                        OutlinedButton(
+                                            onClick = {
+                                                val intent = Intent(Settings.ACTION_WIFI_SETTINGS)
+                                                context.startActivity(intent)
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text("Open Wi-Fi Settings")
+                                        }
+                                    }
+                                }
+                            }
+
                             Row(Modifier.fillMaxWidth().padding(bottom = 14.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                val status = when (state) {
-                                    NetrayVpnService.State.Connected -> {
+                                val status = when {
+                                    proxyConnected -> {
+                                        val pingPart = connectedPingMs?.let { " · ${it} ms" }.orEmpty()
+                                        "PROXY · ${formatUptime(uptime)}$pingPart"
+                                    }
+                                    vpn -> {
                                         val pingPart = connectedPingMs?.let { " · ${it} ms" }.orEmpty()
                                         "CONNECTED · ${formatUptime(uptime)}$pingPart"
                                     }
-                                    NetrayVpnService.State.Connecting -> "CONNECTING…"
-                                    NetrayVpnService.State.Stopping -> "STOPPING…"
-                                    is NetrayVpnService.State.Error -> "CONNECTION ERROR"
+                                    proxyState is NetrayProxyService.State.Connecting || state is NetrayVpnService.State.Connecting -> "CONNECTING…"
+                                    proxyState is NetrayProxyService.State.Stopping || state is NetrayVpnService.State.Stopping -> "STOPPING…"
+                                    proxyState is NetrayProxyService.State.Error || state is NetrayVpnService.State.Error -> "CONNECTION ERROR"
                                     else -> "DISCONNECTED"
                                 }
                                 Text(
                                     text = "●  $status",
                                     modifier = Modifier.weight(1f).clickable { currentScreen = "logs" },
-                                    color = if (vpn) Green else Muted,
+                                    color = if (connected) Green else Muted,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Medium
                                 )
                                 FilledIconButton(
                                     onClick = {
-                                        if (vpn) startTunnel(context, null, mode = 0, disconnect = true)
-                                        else if (android.os.Build.VERSION.SDK_INT >= 33 &&
-                                            context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
-                                            notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                                        else requestVpnConsent()
+                                        if (connected) {
+                                            // Disconnect whichever mode is active
+                                            if (activeMode == 1) {
+                                                startProxyTunnel(context, null, mode = 1, disconnect = true)
+                                            } else {
+                                                startTunnel(context, null, mode = 0, disconnect = true)
+                                            }
+                                            activeMode = 0
+                                        } else if (selectedMode == 1) {
+                                            // Connect in Proxy mode — never calls VpnService API
+                                            if (android.os.Build.VERSION.SDK_INT >= 33 &&
+                                                context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                                notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                            } else {
+                                                activeMode = 1
+                                                val prefs = context.getSharedPreferences("settings", 0)
+                                                proxyHttpPort = ProxyConfig.loadPorts(prefs)[1]
+                                                startProxyTunnel(context, selectedId, selectedMode)
+                                            }
+                                        } else {
+                                            // Connect in TUN mode — requires VPN consent
+                                            if (android.os.Build.VERSION.SDK_INT >= 33 &&
+                                                context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                                notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                            } else {
+                                                activeMode = 0
+                                                requestVpnConsent()
+                                            }
+                                        }
                                     },
-                                    enabled = !busy && (vpn || selectedProfile != null),
+                                    enabled = !anyBusy && (connected || selectedProfile != null),
                                     modifier = Modifier.size(64.dp),
                                     shape = CircleShape,
                                     colors = IconButtonDefaults.filledIconButtonColors(
-                                        containerColor = if (vpn) MaterialTheme.colorScheme.primaryContainer else Blue,
-                                        contentColor = if (vpn) MaterialTheme.colorScheme.primary else Color.White
+                                        containerColor = if (connected) MaterialTheme.colorScheme.primaryContainer else Blue,
+                                        contentColor = if (connected) MaterialTheme.colorScheme.primary else Color.White
                                     )
                                 ) {
-                                    if (busy) {
+                                    if (anyBusy) {
                                         CircularProgressIndicator(modifier = Modifier.size(28.dp), color = Color.White, strokeWidth = 2.5.dp)
                                     } else {
                                         Icon(
                                             painter = painterResource(R.drawable.ic_lucide_power),
-                                            contentDescription = if (vpn) "Disconnect VPN" else "Connect VPN",
+                                            contentDescription = if (connected) "Disconnect" else "Connect",
                                             modifier = Modifier.size(28.dp)
                                         )
                                     }
@@ -785,33 +917,70 @@ private fun startTunnel(context: android.content.Context, profileId: String?, mo
     if (disconnect) context.startService(intent) else ContextCompat.startForegroundService(context, intent)
 }
 
+private fun startProxyTunnel(context: android.content.Context, profileId: String?, mode: Int = 1, disconnect: Boolean = false) {
+    val prefs = context.getSharedPreferences("settings", 0)
+    val ports = ProxyConfig.loadPorts(prefs)
+    val intent = Intent(context, NetrayProxyService::class.java).setAction(if (disconnect) NetrayProxyService.ACTION_DISCONNECT else NetrayProxyService.ACTION_CONNECT)
+        .putExtra(NetrayProxyService.EXTRA_PROFILE, profileId)
+        .putExtra(NetrayProxyService.EXTRA_SOCKS_PORT, ports[0])
+        .putExtra(NetrayProxyService.EXTRA_HTTP_PORT, ports[1])
+    if (disconnect) context.startService(intent) else ContextCompat.startForegroundService(context, intent)
+}
+
 private fun formatUptime(seconds: Long): String = "%02d:%02d:%02d".format(
     TimeUnit.SECONDS.toHours(seconds), TimeUnit.SECONDS.toMinutes(seconds) % 60, seconds % 60
 )
 
-/// Mirrors the Linux reference's latency::response_latency: performs an HTTP GET
-/// to gstatic.com/generate_204 through the tunnel/proxy and measures round-trip time.
-private fun httpPing(host: String, port: Int, timeoutMs: Int = 5000): String {
+/// Mirrors the Linux reference's latency::response_latency: performs an HTTPS GET
+/// to 1.1.1.1/cdn-cgi/trace through the tunnel/proxy and measures round-trip time.
+private fun httpPing(timeoutMs: Int = 5000): String {
     return runCatching {
         val start = android.os.SystemClock.elapsedRealtime()
-        val url = URL("http://$host:$port/generate_204")
+        val url = URL("https://1.1.1.1/cdn-cgi/trace")
         val conn = (url.openConnection() as HttpURLConnection).apply {
             connectTimeout = timeoutMs
             readTimeout = timeoutMs
             useCaches = false
-            setRequestProperty("Host", host)
+            setRequestProperty("Host", "1.1.1.1")
             setRequestProperty("Cache-Control", "no-cache")
             setRequestProperty("Connection", "close")
         }
         try {
             val code = conn.responseCode
-            if (code == 204) {
+            if (code in 200..399) {
                 "${android.os.SystemClock.elapsedRealtime() - start} ms"
             } else {
                 "Failed (HTTP $code)"
             }
         } finally {
             conn.disconnect()
+        }
+    }.getOrElse { "Failed" }
+}
+
+/// Pings through the local HTTP proxy inbound (127.0.0.1:proxyPort) by targeting
+/// an external host. The proxy forwards the request, so this measures the real
+/// proxied path, not the direct internet.
+private fun httpPingViaProxy(proxyPort: Int, timeoutMs: Int = 5000): String {
+    return runCatching {
+        val start = android.os.SystemClock.elapsedRealtime()
+        val proxy = java.net.Proxy(java.net.Proxy.Type.HTTP, java.net.InetSocketAddress("127.0.0.1", proxyPort))
+        val connection = URL("https://1.1.1.1/cdn-cgi/trace").openConnection(proxy) as HttpURLConnection
+        connection.connectTimeout = timeoutMs
+        connection.readTimeout = timeoutMs
+        connection.useCaches = false
+        connection.setRequestProperty("Host", "1.1.1.1")
+        connection.setRequestProperty("Cache-Control", "no-cache")
+        connection.setRequestProperty("Connection", "close")
+        try {
+            val code = connection.responseCode
+            if (code in 200..399) {
+                "${android.os.SystemClock.elapsedRealtime() - start} ms"
+            } else {
+                "Failed (HTTP $code)"
+            }
+        } finally {
+            connection.disconnect()
         }
     }.getOrElse { "Failed" }
 }

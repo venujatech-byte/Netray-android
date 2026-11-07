@@ -17,5 +17,7 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="VPN tunnel service managing Xray core connection" />
         </service>
+        <service android:name=".proxy.NetrayProxyService" android:exported="false" android:foregroundServiceType="dataSync">
+        </service>
     </application>
 </manifest>

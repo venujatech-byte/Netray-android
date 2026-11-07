@@ -19,10 +19,13 @@ fun SettingsScreen(
     settings: SharedPreferences,
     themeMode: String,
     onThemeChange: (String) -> Unit,
+    connectionMode: Int,
+    onConnectionModeChange: (Int) -> Unit,
     vpnBusy: Boolean,
     onViewLogs: () -> Unit
 ) {
     var allowInsecureTls by remember { mutableStateOf(settings.getBoolean("allow_insecure_tls", false)) }
+    var selectedMode by remember { mutableIntStateOf(settings.getInt("connection_mode", 0)) }
 
     Scaffold(
         topBar = {
@@ -80,6 +83,33 @@ fun SettingsScreen(
                                 settings.edit().putBoolean("allow_insecure_tls", it).apply()
                             }
                         )
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Connection Mode", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                        Text(
+                            "TUN routes all device traffic through the VPN. Proxy runs local SOCKS5/HTTP inbounds only.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        SingleChoiceSegmentedButtonRow(
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            SegmentedButton(
+                                selected = selectedMode == 0,
+                                onClick = { selectedMode = 0; onConnectionModeChange(0) },
+                                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                                label = { Text("TUN") }
+                            )
+                            SegmentedButton(
+                                selected = selectedMode == 1,
+                                onClick = { selectedMode = 1; onConnectionModeChange(1) },
+                                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                                label = { Text("Proxy") }
+                            )
+                        }
                     }
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))

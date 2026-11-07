@@ -10,9 +10,11 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.venujatech.netray.R
 import com.venujatech.netray.profiles.ProfileStore
+import com.venujatech.netray.proxy.ProxyModeGuard
 import com.venujatech.netray.xray.LibXrayEngine
 import com.venujatech.netray.xray.TunnelMode
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -53,6 +55,9 @@ class NetrayVpnService : VpnService() {
 
     private fun connect(profileId: String, mode: TunnelMode) {
         try {
+            ProxyModeGuard.assertNoVpnApi("NetrayVpnService.connect")
+            ProxyModeGuard.leaveProxyMode()
+
             val profile = ProfileStore(this).load().first { it.id == profileId }
 
             when (mode) {
@@ -63,14 +68,16 @@ class NetrayVpnService : VpnService() {
                         .establish() ?: error("Android did not establish the VPN")
                     android.util.Log.i("NetrayVpn", "Android VPN interface established")
                     tun = descriptor
-                    val xray = LibXrayEngine(this)
+                    val xray = LibXrayEngine(this, this)
                     engine = xray
                     android.util.Log.i("NetrayVpn", "Starting Xray in TUN mode")
                     xray.start(profile.link, TunnelMode.TUN, descriptor.fd)
                 }
                 TunnelMode.PROXY -> {
+                    // Defensive: Proxy mode should use NetrayProxyService, not this VpnService.
+                    ProxyModeGuard.enterProxyMode()
                     android.util.Log.i("NetrayVpn", "Starting Xray in Proxy mode (no TUN)")
-                    val xray = LibXrayEngine(this)
+                    val xray = LibXrayEngine(this, null)
                     engine = xray
                     xray.start(profile.link, TunnelMode.PROXY)
                 }
