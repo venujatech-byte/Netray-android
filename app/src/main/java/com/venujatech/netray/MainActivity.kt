@@ -647,7 +647,7 @@ private fun NetrayScreen() {
                                 Text(
                                     text = "●  $status",
                                     modifier = Modifier.weight(1f).clickable { currentScreen = "logs" },
-                                    color = if (connected) Green else Muted,
+                                    color = if (connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Medium
                                 )
@@ -687,8 +687,8 @@ private fun NetrayScreen() {
                                     modifier = Modifier.size(64.dp),
                                     shape = CircleShape,
                                     colors = IconButtonDefaults.filledIconButtonColors(
-                                        containerColor = if (connected) MaterialTheme.colorScheme.primaryContainer else Blue,
-                                        contentColor = if (connected) MaterialTheme.colorScheme.primary else Color.White
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = Color.White
                                     )
                                 ) {
                                     if (anyBusy) {
