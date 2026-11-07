@@ -27,7 +27,12 @@ class ProfileStore(context: Context) {
         for (i in 0 until rows.length()) {
             val row = rows.getJSONObject(i)
             runCatching {
-                Profile.parse(row.getString("link")).copy(id = row.getString("id"))
+                val profile = Profile.parse(row.getString("link"))
+                val savedName = row.optString("name").ifBlank { profile.name }
+                profile.copy(
+                    id = row.getString("id"),
+                    fields = profile.fields + (ConfigFieldKeys.REMARKS to savedName)
+                )
             }.onSuccess { list.add(it) }
         }
         return list
@@ -35,7 +40,13 @@ class ProfileStore(context: Context) {
 
     fun save(profiles: List<Profile>) {
         val rows = JSONArray()
-        profiles.forEach { rows.put(JSONObject().put("id", it.id).put("link", it.link)) }
+        profiles.forEach {
+            rows.put(JSONObject()
+                .put("id", it.id)
+                .put("link", it.link)
+                .put("name", it.name)
+                .put("protocol", it.protocol.key))
+        }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
         val encrypted = byteArrayOf(FORMAT) + cipher.iv + cipher.doFinal(rows.toString().toByteArray(Charsets.UTF_8))

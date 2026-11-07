@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -52,14 +53,23 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import com.google.android.gms.tasks.Tasks
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.common.InputImage
 import com.venujatech.netray.profiles.Profile
 import com.venujatech.netray.profiles.ProfileStore
 import com.venujatech.netray.profiles.NativeBackend
+import com.venujatech.netray.profiles.ConfigDraft
+import com.venujatech.netray.profiles.ConfigFieldKeys
+import com.venujatech.netray.profiles.ConfigParserRouter
+import com.venujatech.netray.profiles.ProtocolKind
 import com.venujatech.netray.proxy.NetrayProxyService
 import com.venujatech.netray.proxy.ProxyConfig
 import com.venujatech.netray.ui.AboutScreen
 import com.venujatech.netray.ui.CheckIpScreen
-import com.venujatech.netray.ui.EditVlessScreen
+import com.venujatech.netray.ui.ProfileFormScreen
+import com.venujatech.netray.ui.RawConfigDialog
+import com.venujatech.netray.ui.RawJsonEditorScreen
 import com.venujatech.netray.ui.LogsScreen
 import com.venujatech.netray.ui.QrScannerScreen
 import com.venujatech.netray.ui.SettingsScreen
@@ -72,6 +82,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
+import java.io.ByteArrayOutputStream
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
@@ -131,12 +142,18 @@ private fun NetrayScreen() {
     var shareLink by remember { mutableStateOf("") }
     var shareCopied by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
+    var addMenuExpanded by remember { mutableStateOf(false) }
+    var qrSourceMenuExpanded by remember { mutableStateOf(false) }
+    var addProtocolKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var importedDraft by remember { mutableStateOf<ConfigDraft?>(null) }
+    var rawDialogVisible by remember { mutableStateOf(false) }
+    var rawEditorVisible by rememberSaveable { mutableStateOf(false) }
+    var rawRemarks by rememberSaveable { mutableStateOf("") }
+    var rawJson by rememberSaveable { mutableStateOf("") }
+    var rawProfileId by rememberSaveable { mutableStateOf<String?>(null) }
+    var rawEditorError by rememberSaveable { mutableStateOf("") }
     var showImport by rememberSaveable { mutableStateOf(false) }
-    var showImportConfirm by rememberSaveable { mutableStateOf(false) }
     var showQrScanner by remember { mutableStateOf(false) }
-    var pendingImportLink by rememberSaveable { mutableStateOf("") }
-    var pendingImportProfile by remember { mutableStateOf<Profile?>(null) }
-    var importConfirmError by rememberSaveable { mutableStateOf("") }
     val settings = remember { context.getSharedPreferences("settings", 0) }
     var themeMode by rememberSaveable { mutableStateOf(settings.getString("theme_mode", "system") ?: "system") }
     var allowInsecureTls by remember { mutableStateOf(settings.getBoolean("allow_insecure_tls", false)) }
@@ -165,11 +182,22 @@ private fun NetrayScreen() {
     var selectedMode by rememberSaveable { mutableIntStateOf(settings.getInt("connection_mode", 0)) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
 
-    BackHandler(enabled = drawerState.isOpen || currentScreen != "configs" || editTarget != null) {
+    BackHandler(enabled = drawerState.isOpen || currentScreen != "configs" || editTarget != null || addProtocolKey != null || rawEditorVisible || rawDialogVisible) {
         if (drawerState.isOpen) {
             scope.launch { drawerState.close() }
-        } else if (editTarget != null) {
-            if (!editSaving) { editTarget = null; editError = "" }
+        } else if (rawEditorVisible) {
+            rawEditorVisible = false
+            rawDialogVisible = true
+        } else if (rawDialogVisible) {
+            rawDialogVisible = false
+            rawProfileId = null
+        } else if (editTarget != null || addProtocolKey != null) {
+            if (!editSaving) {
+                editTarget = null
+                addProtocolKey = null
+                importedDraft = null
+                editError = ""
+            }
         } else {
             currentScreen = "configs"
         }
@@ -184,6 +212,128 @@ private fun NetrayScreen() {
             }
             .onFailure { storageError = "Saved profiles could not be read. They have been kept unchanged." }
     }
+
+    val saveProfile: (Profile, String?) -> Unit = { candidate, replacingId ->
+        scope.launch {
+            if (!storeReady) {
+                editError = "Saved profiles are unavailable; restart before changing them."
+                rawEditorError = editError
+                return@launch
+            }
+            val duplicate = profiles.firstOrNull { it.id != replacingId && it.duplicateKey == candidate.duplicateKey }
+            if (duplicate != null) {
+                editError = context.getString(R.string.error_duplicate_config)
+                rawEditorError = editError
+                return@launch
+            }
+            editSaving = true
+            editError = ""
+            try {
+                val next = if (replacingId == null) profiles + candidate
+                else profiles.map { if (it.id == replacingId) candidate.copy(id = replacingId) else it }
+                withContext(Dispatchers.IO) { store.save(next) }
+                profiles.clear()
+                profiles.addAll(next)
+                selectedId = candidate.id
+                replacingId?.let { pingResults.remove(it); pinging.remove(it) }
+                editTarget = null
+                addProtocolKey = null
+                importedDraft = null
+                rawDialogVisible = false
+                rawEditorVisible = false
+                rawProfileId = null
+                rawEditorError = ""
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                val message = "Could not securely save profile; the previous saved data was preserved."
+                editError = message
+                rawEditorError = message
+            } finally {
+                editSaving = false
+            }
+        }
+    }
+
+    val openDraft: (ConfigDraft) -> Unit = { draft ->
+        editError = ""
+        if (draft.protocol == ProtocolKind.RAW_JSON) {
+            rawProfileId = null
+            rawRemarks = draft[ConfigFieldKeys.REMARKS]
+            rawJson = draft[ConfigFieldKeys.RAW_JSON]
+            rawEditorError = ""
+            rawDialogVisible = true
+        } else {
+            editTarget = null
+            addProtocolKey = draft.protocol.key
+            importedDraft = draft
+            if (draft.protocol == ProtocolKind.SSH && !settings.getBoolean("ssh_help_toast_shown", false)) {
+                Toast.makeText(context, R.string.ssh_help_toast, Toast.LENGTH_LONG).show()
+                settings.edit().putBoolean("ssh_help_toast_shown", true).apply()
+            }
+        }
+    }
+
+    val openProtocol: (ProtocolKind) -> Unit = { protocol ->
+        addMenuExpanded = false
+        importedDraft = null
+        if (protocol == ProtocolKind.RAW_JSON) {
+            rawProfileId = null
+            rawRemarks = ""
+            rawJson = ""
+            rawEditorError = ""
+            rawDialogVisible = true
+        } else {
+            editTarget = null
+            addProtocolKey = protocol.key
+            if (protocol == ProtocolKind.SSH && !settings.getBoolean("ssh_help_toast_shown", false)) {
+                Toast.makeText(context, R.string.ssh_help_toast, Toast.LENGTH_LONG).show()
+                settings.edit().putBoolean("ssh_help_toast_shown", true).apply()
+            }
+        }
+    }
+
+    val importConfigText: (String) -> Unit = { importText ->
+        scope.launch {
+            val batch = withContext(Dispatchers.Default) { ConfigParserRouter.parseMany(importText) }
+            if (batch.configs.isEmpty()) {
+                Toast.makeText(context, batch.errors.firstOrNull() ?: context.getString(R.string.error_empty_import), Toast.LENGTH_LONG).show()
+            } else if (batch.configs.size == 1) {
+                val draft = batch.configs.single()
+                val profile = runCatching { Profile.fromDraft(draft) }.getOrNull()
+                if (profile != null && profiles.any { it.duplicateKey == profile.duplicateKey }) {
+                    Toast.makeText(context, R.string.error_duplicate_config, Toast.LENGTH_LONG).show()
+                } else {
+                    openDraft(draft)
+                    if (batch.skipped > 0) Toast.makeText(context, context.getString(R.string.import_summary, 0, batch.skipped), Toast.LENGTH_LONG).show()
+                }
+            } else {
+                val keys = profiles.mapTo(mutableSetOf()) { it.duplicateKey }
+                val additions = mutableListOf<Profile>()
+                var skipped = batch.skipped
+                batch.configs.forEach { draft ->
+                    val profile = runCatching { Profile.fromDraft(draft) }.getOrNull()
+                    if (profile == null || !keys.add(profile.duplicateKey)) skipped++ else additions += profile
+                }
+                if (additions.isNotEmpty() && storeReady) {
+                    try {
+                        val next = profiles + additions
+                        withContext(Dispatchers.IO) { store.save(next) }
+                        profiles.addAll(additions)
+                        selectedId = additions.first().id
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        skipped += additions.size
+                    }
+                } else if (additions.isNotEmpty()) {
+                    skipped += additions.size
+                }
+                Toast.makeText(context, context.getString(R.string.import_summary, additions.size - (skipped - batch.skipped), skipped), Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     var pendingProfileId by rememberSaveable { mutableStateOf("") }
     val consent = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK && pendingProfileId.isNotBlank()) startTunnel(context, pendingProfileId, selectedMode)
@@ -204,60 +354,69 @@ private fun NetrayScreen() {
         else notificationError = "Allow notifications so Android can show the VPN's background status."
     }
 
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            runCatching {
+                if (context.contentResolver.getType(uri)?.startsWith("image/") == true) readQrFromImage(context, uri)
+                else readImportFile(context, uri)
+            }.onSuccess(importConfigText)
+                .onFailure { Toast.makeText(context, it.message ?: context.getString(R.string.error_empty_import), Toast.LENGTH_LONG).show() }
+        }
+    }
+    val qrImagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) scope.launch {
+            runCatching { readQrFromImage(context, uri) }
+                .onSuccess(importConfigText)
+                .onFailure { Toast.makeText(context, it.message ?: context.getString(R.string.error_empty_import), Toast.LENGTH_LONG).show() }
+        }
+    }
+
     val isDark = themeMode == "dark" || (themeMode == "system" && androidx.compose.foundation.isSystemInDarkTheme())
     val colorScheme = colorSchemeForAccent(accentColor, isDark)
     NetrayTheme(themeMode = themeMode, dynamicColor = false, colorScheme = colorScheme) {
-        if (editTarget != null) {
-            val original = editTarget!!
-            EditVlessScreen(
-                profile = original,
-                saving = editSaving,
-                error = editError,
-                onCancel = { if (!editSaving) { editTarget = null; editError = "" } },
-                onSave = { editedLink ->
-                    runCatching { Profile.parse(editedLink).copy(id = original.id) }
-                        .onFailure { editError = it.message ?: "Invalid VLESS profile" }
-                        .onSuccess { edited ->
-                            scope.launch {
-                                if (!storeReady) {
-                                    editError = "Saved profiles are unavailable; restart before changing them."
-                                    return@launch
-                                }
-                                editSaving = true
-                                editError = ""
-                                try {
-                                    val next = profiles.map { if (it.id == original.id) edited else it }
-                                    withContext(Dispatchers.IO) { store.save(next) }
-                                    profiles.clear()
-                                    profiles.addAll(next)
-                                    selectedId = edited.id
-                                    pingResults.remove(original.id)
-                                    pinging.remove(original.id)
-                                    editTarget = null
-                                } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                                    throw cancelled
-                                } catch (failure: Exception) {
-                                    editError = "Could not securely save profile; the previous saved profile was preserved."
-                                } finally {
-                                    editSaving = false
-                                }
-                            }
-                        }
+        if (rawEditorVisible) {
+            RawJsonEditorScreen(
+                initialJson = rawJson,
+                error = rawEditorError,
+                onCancel = { rawEditorVisible = false; rawDialogVisible = true },
+                onPaste = {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    rawJson = clipboard.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
+                },
+                onSave = { json ->
+                    val draft = ConfigDraft.create(ProtocolKind.RAW_JSON).withAll(mapOf(
+                        ConfigFieldKeys.REMARKS to rawRemarks,
+                        ConfigFieldKeys.RAW_JSON to json
+                    ))
+                    runCatching { Profile.fromDraft(draft, rawProfileId ?: java.util.UUID.randomUUID().toString()) }
+                        .onSuccess { saveProfile(it, rawProfileId) }
+                        .onFailure { rawEditorError = it.message ?: context.getString(R.string.error_invalid_json) }
                 }
+            )
+        } else if (editTarget != null) {
+            val original = editTarget!!
+            ProfileFormScreen(
+                protocol = original.protocol,
+                existing = original,
+                saving = editSaving,
+                saveError = editError,
+                onDiscard = { if (!editSaving) { editTarget = null; editError = "" } },
+                onSave = { candidate -> saveProfile(candidate, original.id) }
+            )
+        } else if (addProtocolKey != null) {
+            val protocol = ProtocolKind.fromKey(addProtocolKey!!) ?: ProtocolKind.VLESS
+            ProfileFormScreen(
+                protocol = protocol,
+                existing = null,
+                initialDraft = importedDraft,
+                saving = editSaving,
+                saveError = editError,
+                onDiscard = { if (!editSaving) { addProtocolKey = null; importedDraft = null; editError = "" } },
+                onSave = { candidate -> saveProfile(candidate, null) }
             )
         } else if (showQrScanner) {
             QrScannerScreen(
-                onScanResult = { raw ->
-                    scope.launch {
-                        runCatching { withContext(Dispatchers.IO) { Profile.parse(raw) } }
-                            .onSuccess { profile ->
-                                pendingImportProfile = profile
-                                showQrScanner = false
-                                showImportConfirm = true
-                            }
-                            .onFailure { importError = it.message ?: "Invalid QR config"; showQrScanner = false }
-                    }
-                },
+                onScanResult = { raw -> showQrScanner = false; importConfigText(raw) },
                 onClose = { showQrScanner = false }
             )
         } else {
@@ -440,49 +599,84 @@ private fun NetrayScreen() {
                                     modifier = Modifier.size(34.dp).clip(CircleShape)
                                 )
                                 Text("Netray", Modifier.padding(start = 12.dp).weight(1f), fontSize = 21.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
+                                Box {
+                                    IconButton(
+                                        onClick = { addMenuExpanded = true },
+                                        enabled = storeReady,
+                                        modifier = Modifier.size(40.dp)
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_lucide_plus),
+                                            contentDescription = stringResource(R.string.action_add_profile),
+                                            tint = MaterialTheme.colorScheme.onBackground,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                    DropdownMenu(
+                                        expanded = addMenuExpanded,
+                                        onDismissRequest = { addMenuExpanded = false },
+                                        modifier = Modifier.width(280.dp),
+                                        containerColor = Color(0xFF2C2C2C)
+                                    ) {
+                                        ProtocolKind.menuOrder.forEach { protocol ->
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                                        Text(stringResource(protocol.titleRes), color = Color.White)
+                                                        Spacer(Modifier.weight(1f))
+                                                        ProtocolBadge(protocol.badge)
+                                                    }
+                                                },
+                                                onClick = { openProtocol(protocol) },
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
+                                    }
+                                }
+                                Box {
+                                    IconButton(
+                                        onClick = { qrSourceMenuExpanded = true },
+                                        enabled = storeReady,
+                                        modifier = Modifier.size(40.dp)
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_lucide_scan_line),
+                                            contentDescription = stringResource(R.string.action_scan_qr),
+                                            tint = MaterialTheme.colorScheme.onBackground,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                    DropdownMenu(expanded = qrSourceMenuExpanded, onDismissRequest = { qrSourceMenuExpanded = false }) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.action_scan_qr)) },
+                                            onClick = { qrSourceMenuExpanded = false; showQrScanner = true }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.action_scan_qr_image)) },
+                                            onClick = { qrSourceMenuExpanded = false; qrImagePicker.launch("image/*") }
+                                        )
+                                    }
+                                }
                                 IconButton(
                                     onClick = { showImport = true },
                                     enabled = storeReady,
                                     modifier = Modifier.size(40.dp)
                                 ) {
                                     Icon(
-                                        painter = painterResource(R.drawable.ic_lucide_plus),
-                                        contentDescription = "Add VLESS profile",
+                                        painter = painterResource(R.drawable.ic_lucide_link),
+                                        contentDescription = stringResource(R.string.action_import_link),
                                         tint = MaterialTheme.colorScheme.onBackground,
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
                                 IconButton(
-                                    onClick = { showQrScanner = true },
+                                    onClick = { filePicker.launch(arrayOf("*/*")) },
                                     enabled = storeReady,
                                     modifier = Modifier.size(40.dp)
                                 ) {
                                     Icon(
-                                        painter = painterResource(R.drawable.ic_lucide_scan_line),
-                                        contentDescription = "Scan QR code to import",
-                                        tint = MaterialTheme.colorScheme.onBackground,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                                IconButton(
-                                    onClick = {
-                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                        val clip = clipboard.primaryClip
-                                        val text = clip?.getItemAt(0)?.text?.toString().orEmpty().trim()
-                                        if (text.isBlank()) {
-                                            importError = "Clipboard is empty"
-                                            showImport = true
-                                        } else {
-                                            pendingImportLink = text
-                                            showImportConfirm = true
-                                        }
-                                    },
-                                    enabled = storeReady,
-                                    modifier = Modifier.size(40.dp)
-                                ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_lucide_clipboard_paste),
-                                        contentDescription = "Import config from clipboard",
+                                        painter = painterResource(R.drawable.ic_lucide_file_text),
+                                        contentDescription = stringResource(R.string.action_import_file),
                                         tint = MaterialTheme.colorScheme.onBackground,
                                         modifier = Modifier.size(18.dp)
                                     )
@@ -501,8 +695,18 @@ private fun NetrayScreen() {
                                     }
                                     DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                                         DropdownMenuItem(
-                                            text = { Text("Import VLESS link") },
+                                            text = { Text(stringResource(R.string.action_import_link)) },
                                             onClick = { menuExpanded = false; showImport = true }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.action_paste)) },
+                                            onClick = {
+                                                menuExpanded = false
+                                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
+                                                if (text.isBlank()) Toast.makeText(context, R.string.error_empty_import, Toast.LENGTH_SHORT).show()
+                                                else importConfigText(text)
+                                            }
                                         )
                                         DropdownMenuItem(
                                             text = { Text("Settings") },
@@ -537,7 +741,16 @@ private fun NetrayScreen() {
                                             }
                                         },
                                         onSelect = { selectedId = profile.id }, onDelete = { deleteTarget = profile },
-                                        onEdit = { editError = ""; editTarget = profile },
+                                        onEdit = {
+                                            editError = ""
+                                            if (profile.protocol == ProtocolKind.RAW_JSON) {
+                                                rawProfileId = profile.id
+                                                rawRemarks = profile.name
+                                                rawJson = profile.link
+                                                rawEditorError = ""
+                                                rawDialogVisible = true
+                                            } else editTarget = profile
+                                        },
                                         onShare = {
                                             shareTarget = profile
                                             shareLink = profile.link
@@ -705,51 +918,26 @@ private fun NetrayScreen() {
         }
     }
 
+    if (rawDialogVisible) RawConfigDialog(
+        remarks = rawRemarks,
+        onRemarksChange = { rawRemarks = it },
+        error = rawEditorError,
+        onOpenEditor = { rawDialogVisible = false; rawEditorVisible = true },
+        onCancel = { rawDialogVisible = false; rawProfileId = null; rawEditorError = "" }
+    )
+
     if (showImport) AlertDialog(
         onDismissRequest = { showImport = false; importError = "" },
-        title = { Text("Add VLESS profile") },
+        title = { Text(stringResource(R.string.action_import_link)) },
         text = { Column {
-            OutlinedTextField(link, { link = it; importError = "" }, label = { Text("VLESS link") }, minLines = 3)
+            OutlinedTextField(link, { link = it; importError = "" }, label = { Text("Link or config text") }, minLines = 3)
             if (importError.isNotEmpty()) Text(importError, color = MaterialTheme.colorScheme.error)
         } },
         confirmButton = { TextButton(onClick = {
-            runCatching { Profile.parse(link) }.onSuccess { profile ->
-                pendingImportProfile = profile
-                link = ""
-                showImport = false
-                showImportConfirm = true
-            }.onFailure { importError = it.message ?: "Invalid VLESS link" }
-        }) { Text("Add") } },
-        dismissButton = { TextButton(onClick = { showImport = false }) { Text("Cancel") } },
-        containerColor = MaterialTheme.colorScheme.surface
-    )
-
-    if (showImportConfirm && pendingImportProfile != null) AlertDialog(
-        onDismissRequest = { showImportConfirm = false; pendingImportProfile = null; importConfirmError = "" },
-        title = { Text("Import config") },
-        text = { Column {
-            Text(pendingImportProfile!!.name, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-            Text("${pendingImportProfile!!.server}:${pendingImportProfile!!.port}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-            Text("This will add the config to your list.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (importConfirmError.isNotEmpty()) Text(importConfirmError, color = MaterialTheme.colorScheme.error)
-        } },
-        confirmButton = { TextButton(onClick = {
-            val profile = pendingImportProfile
-            if (profile == null) { showImportConfirm = false; return@TextButton }
-            scope.launch {
-                if (!storeReady) { importConfirmError = "Saved profiles are unavailable; restart before changing them."; return@launch }
-                runCatching { withContext(Dispatchers.IO) { store.save(profiles + profile) } }
-                    .onSuccess {
-                        profiles.add(profile)
-                        selectedId = profile.id
-                        showImportConfirm = false
-                        pendingImportProfile = null
-                    }
-                    .onFailure { importConfirmError = "Could not securely save profile" }
-            }
-        }) { Text("Import") } },
-        dismissButton = { TextButton(onClick = { showImportConfirm = false; pendingImportProfile = null; importConfirmError = "" }) { Text("Cancel") } },
+            if (link.isBlank()) importError = context.getString(R.string.error_empty_import)
+            else { val text = link; showImport = false; link = ""; importConfigText(text) }
+        }) { Text(stringResource(R.string.action_import)) } },
+        dismissButton = { TextButton(onClick = { showImport = false; link = ""; importError = "" }) { Text(stringResource(R.string.action_cancel)) } },
         containerColor = MaterialTheme.colorScheme.surface
     )
 
@@ -841,13 +1029,11 @@ private fun ProfileCard(
             )
             Spacer(Modifier.width(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Tag("VLESS", true)
-                Tag(profile.transport.uppercase())
-                if (profile.security != "none") Tag(profile.security.uppercase())
+                profile.cardTags.forEachIndexed { index, badge -> Tag(badge, active = index == 0) }
             }
         }
         Text(
-            text = "${profile.server}:${profile.port}",
+            text = profile.endpoint,
             color = Muted,
             fontSize = 13.sp,
             maxLines = 1,
@@ -1004,6 +1190,47 @@ private fun Tag(text: String, active: Boolean = false) {
             .background(if (active) Color(0xFF27364A) else Color(0xFF222833), RoundedCornerShape(6.dp))
             .padding(horizontal = 9.dp, vertical = 6.dp)
     )
+}
+
+@Composable
+private fun ProtocolBadge(kind: String) {
+    val background = if (kind == "NEW") Color(0xFFA8650F) else Color(0xFF6B7F1A)
+    Text(
+        text = kind,
+        color = Color.White,
+        fontSize = 12.sp,
+        modifier = Modifier
+            .background(background, RoundedCornerShape(5.dp))
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    )
+}
+
+private suspend fun readImportFile(context: Context, uri: Uri): String = withContext(Dispatchers.IO) {
+    val output = ByteArrayOutputStream()
+    val input = context.contentResolver.openInputStream(uri) ?: error("Could not open selected file")
+    input.use { stream ->
+        val buffer = ByteArray(8192)
+        var total = 0
+        while (true) {
+            val count = stream.read(buffer)
+            if (count < 0) break
+            total += count
+            require(total <= 4 * 1024 * 1024) { "Import file is larger than 4 MB" }
+            output.write(buffer, 0, count)
+        }
+    }
+    output.toString(Charsets.UTF_8.name()).also { require(it.isNotBlank()) { "Selected file is empty" } }
+}
+
+private suspend fun readQrFromImage(context: Context, uri: Uri): String = withContext(Dispatchers.IO) {
+    val scanner = BarcodeScanning.getClient()
+    try {
+        val image = InputImage.fromFilePath(context, uri)
+        val qr = Tasks.await(scanner.process(image)).firstOrNull { !it.rawValue.isNullOrBlank() }
+        qr?.rawValue ?: error(context.getString(R.string.error_qr_image))
+    } finally {
+        scanner.close()
+    }
 }
 
 private fun startTunnel(context: android.content.Context, profileId: String?, mode: Int = 0, disconnect: Boolean = false) {
