@@ -1,0 +1,258 @@
+name: Android release
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "native/**"
+      - "gradle/**"
+      - "scripts/build-rust-android.sh"
+      - "scripts/build-libxray.sh"
+      - "scripts/patch-xray-tls.py"
+      - "scripts/test-xray-tls.go"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/android-release.yml"
+      - ".github/release.yml"
+      - "docs/SECURITY.md"
+      - "docs/RELEASING.md"
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "native/**"
+      - "gradle/**"
+      - "scripts/build-rust-android.sh"
+      - "scripts/build-libxray.sh"
+      - "scripts/patch-xray-tls.py"
+      - "scripts/test-xray-tls.go"
+      - "scripts/compute-version.sh"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/android-release.yml"
+      - ".github/release.yml"
+      - "docs/SECURITY.md"
+      - "docs/RELEASING.md"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      version_code: ${{ steps.version.outputs.version_code }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Compute Android version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            output="$(bash scripts/compute-version.sh --pr "$PR_NUMBER")"
+          else
+            output="$(bash scripts/compute-version.sh)"
+          fi
+          printf '%s\n' "$output" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$output"
+
+  build-test:
+    needs: version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK/NDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.3"
+          cache: true
+          cache-dependency-path: scripts/build-libxray.sh
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Rust unit tests
+        run: cargo test --manifest-path native/Cargo.toml --locked
+      - name: Android unit tests
+        run: ./gradlew :app:testDebugUnitTest
+      - name: Theme token guard
+        run: bash scripts/check-theme-colors.sh
+      - name: Version script self-check
+        run: bash scripts/test-compute-version.sh
+      - name: Release lint and R8 build
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          VERSION_CODE: ${{ needs.version.outputs.version_code }}
+        run: ./gradlew :app:lintDebug :app:assembleRelease -PversionName="$VERSION" -PversionCode="$VERSION_CODE" -PreleaseAbis=arm64-v8a,armeabi-v7a
+      - name: Release size guard
+        run: bash scripts/check-apk-size.sh
+      - name: Prepare unsigned PR artifact
+        if: github.event_name == 'pull_request'
+        run: cp app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/Netray-Android-${{ needs.version.outputs.version }}-unsigned.apk"
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'pull_request'
+        with:
+          name: netray-android-pr-${{ github.event.pull_request.number }}
+          path: ${{ runner.temp }}/Netray-Android-*-unsigned.apk
+          retention-days: 14
+      - name: Report PR artifact
+        if: github.event_name == 'pull_request'
+        run: |
+          apk="$RUNNER_TEMP/Netray-Android-${{ needs.version.outputs.version }}-unsigned.apk"
+          printf '### Android PR build\n\nVersion: `%s`\n\nRelease-mode APK: `%s` bytes (unsigned, not published).\n' \
+            '${{ needs.version.outputs.version }}' "$(stat -c %s "$apk")" >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [version, build-test]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK/NDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.3"
+          cache: true
+          cache-dependency-path: scripts/build-libxray.sh
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Check release signing secrets
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [[ -z "$KEYSTORE_BASE64" || -z "$KEYSTORE_PASSWORD" || -z "$KEY_ALIAS" || -z "$KEY_PASSWORD" ]]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "WARNING: Android release signing secrets are incomplete; unsigned artifacts will not be published." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          keystore="$RUNNER_TEMP/netray-android-release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          chmod 600 "$keystore"
+          {
+            echo "ANDROID_KEYSTORE_PATH=$keystore"
+            echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
+            echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+          echo "available=true" >> "$GITHUB_OUTPUT"
+      - name: Build unsigned release artifact when signing is unavailable
+        if: steps.signing.outputs.available != 'true'
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          VERSION_CODE: ${{ needs.version.outputs.version_code }}
+        run: |
+          ./gradlew :app:assembleRelease -PversionName="$VERSION" -PversionCode="$VERSION_CODE" -PreleaseAbis=arm64-v8a,armeabi-v7a
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release-unsigned.apk "dist/Netray-Android-v$VERSION-universal-unsigned.apk"
+          echo "WARNING: Android release skipped because signing secrets are missing." >> "$GITHUB_STEP_SUMMARY"
+      - name: Build signed per-ABI and universal APKs and AAB
+        if: steps.signing.outputs.available == 'true'
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          VERSION_CODE: ${{ needs.version.outputs.version_code }}
+        run: |
+          mkdir -p dist/private
+          base_code="$VERSION_CODE"
+          arm_code=$((base_code + 1))
+          v7_code=$((base_code + 2))
+          ./gradlew :app:assembleRelease -PversionName="$VERSION" -PversionCode="$arm_code" -PreleaseAbis=arm64-v8a
+          cp app/build/outputs/apk/release/app-release.apk "dist/Netray-Android-v$VERSION-arm64-v8a.apk"
+          cp app/build/outputs/mapping/release/mapping.txt "dist/private/mapping-arm64.txt"
+          ./gradlew :app:assembleRelease -PversionName="$VERSION" -PversionCode="$v7_code" -PreleaseAbis=armeabi-v7a
+          cp app/build/outputs/apk/release/app-release.apk "dist/Netray-Android-v$VERSION-armeabi-v7a.apk"
+          cp app/build/outputs/mapping/release/mapping.txt "dist/private/mapping-armeabi-v7a.txt"
+          ./gradlew :app:assembleRelease -PversionName="$VERSION" -PversionCode="$base_code" -PreleaseAbis=arm64-v8a,armeabi-v7a
+          cp app/build/outputs/apk/release/app-release.apk "dist/Netray-Android-v$VERSION-universal.apk"
+          cp app/build/outputs/mapping/release/mapping.txt "dist/private/mapping-universal.txt"
+          ./gradlew :app:bundleRelease -PversionName="$VERSION" -PversionCode="$base_code" -PreleaseAbis=arm64-v8a,armeabi-v7a
+          cp app/build/outputs/bundle/release/app-release.aab "dist/private/Netray-Android-v$VERSION.aab"
+          for apk in dist/*.apk; do
+            "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -v 4 "$apk"
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk"
+          done
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs dist/Netray-Android-v$VERSION-universal.apk | tee dist/private/certificate.txt
+          sha256sum dist/*.apk > dist/SHA256SUMS.txt
+          if [[ -d app/build/outputs/native-debug-symbols/release ]]; then
+            cp -R app/build/outputs/native-debug-symbols/release dist/private/native-debug-symbols
+          fi
+          printf '### Android artifacts\n\nVersion: `%s`\n\n' "$VERSION" >> "$GITHUB_STEP_SUMMARY"
+          stat -c '%n %s bytes' dist/*.apk >> "$GITHUB_STEP_SUMMARY"
+          sed -n 's/^Signer #1 certificate SHA-256 digest: /Certificate SHA-256: /p' dist/private/certificate.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish signed Android release
+        if: steps.signing.outputs.available == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release tag or release $TAG already exists; refusing to create a duplicate." >&2
+            exit 1
+          fi
+          notes="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" -f tag_name="$TAG" -f target_commitish="$GITHUB_SHA" --jq .body || true)"
+          if [[ -z "${notes//[[:space:]]/}" ]]; then
+            notes="$(printf 'Netray Android v%s\n\nBuilt from commit %s.\n' "$VERSION" "$GITHUB_SHA")"
+          fi
+          git tag "$TAG" "$GITHUB_SHA"
+          git push origin "$TAG"
+          gh release create "$TAG" dist/*.apk dist/SHA256SUMS.txt --target "$GITHUB_SHA" --title "Netray Android v$VERSION" --notes "$notes"
+      - name: Upload private shrinker mapping and native symbols
+        if: always() && steps.signing.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: netray-android-private-symbols-${{ needs.version.outputs.version }}
+          path: dist/private/
+          retention-days: 90
+      - name: Remove temporary keystore
+        if: always()
+        run: if [[ -n "${ANDROID_KEYSTORE_PATH:-}" ]]; then rm -f "$ANDROID_KEYSTORE_PATH"; fi

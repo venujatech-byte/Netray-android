@@ -33,4 +33,4 @@ Do not move an existing release tag. Publish a higher patch release with the fix
 
 ## Release artifacts and shrinker rules
 
-Release artifacts are signed per-ABI APKs, a universal ARM fallback APK, SHA256SUMS.txt, and a signed AAB. R8 `mapping.txt` and native symbols are retained as private Actions artifacts for 90 days. The app's explicit R8 keep rule preserves native JNI entry point names. The libXray AAR contributes its upstream consumer keep rules for the reflective Go bridge; do not remove them without testing the pinned integration.
+Public release assets are signed per-ABI APKs, a universal ARM fallback APK, and SHA256SUMS.txt. The signed AAB, R8 `mapping.txt`, and any generated native symbols are retained as private Actions artifacts for 90 days. The app's explicit R8 keep rule preserves native JNI entry point names. The libXray AAR contributes its upstream consumer keep rules for the reflective Go bridge; do not remove them without testing the pinned integration.
