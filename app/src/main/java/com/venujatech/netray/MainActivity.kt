@@ -443,7 +443,7 @@ private fun NetrayScreen() {
                                     modifier = Modifier.size(40.dp)
                                 ) {
                                     Icon(
-                                        painter = painterResource(R.drawable.ic_add_profile),
+                                        painter = painterResource(R.drawable.ic_lucide_plus),
                                         contentDescription = "Add VLESS profile",
                                         tint = MaterialTheme.colorScheme.onBackground,
                                         modifier = Modifier.size(24.dp)
@@ -455,7 +455,7 @@ private fun NetrayScreen() {
                                     modifier = Modifier.size(40.dp)
                                 ) {
                                     Icon(
-                                        painter = painterResource(R.drawable.ic_qr_scan),
+                                        painter = painterResource(R.drawable.ic_lucide_qr_code),
                                         contentDescription = "Scan QR code to import",
                                         tint = MaterialTheme.colorScheme.onBackground,
                                         modifier = Modifier.size(24.dp)
@@ -478,7 +478,7 @@ private fun NetrayScreen() {
                                     modifier = Modifier.size(40.dp)
                                 ) {
                                     Icon(
-                                        painter = painterResource(R.drawable.ic_clipboard_import),
+                                        painter = painterResource(R.drawable.ic_lucide_copy),
                                         contentDescription = "Import config from clipboard",
                                         tint = MaterialTheme.colorScheme.onBackground,
                                         modifier = Modifier.size(24.dp)
@@ -691,14 +691,19 @@ private fun NetrayScreen() {
                                         contentColor = Color.White
                                     )
                                 ) {
-                                    if (anyBusy) {
-                                        CircularProgressIndicator(modifier = Modifier.size(28.dp), color = Color.White, strokeWidth = 2.5.dp)
-                                    } else {
+                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                         Icon(
                                             painter = painterResource(if (connected) R.drawable.ic_stop else R.drawable.ic_start),
                                             contentDescription = if (connected) "Disconnect" else "Connect",
                                             modifier = Modifier.size(28.dp)
                                         )
+                                        if (anyBusy) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(20.dp),
+                                                color = Color.White,
+                                                strokeWidth = 2.5.dp
+                                            )
+                                        }
                                     }
                                 }
                             }
