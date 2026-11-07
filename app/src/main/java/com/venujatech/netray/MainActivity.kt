@@ -51,6 +51,7 @@ import com.venujatech.netray.profiles.NativeBackend
 import com.venujatech.netray.ui.AboutScreen
 import com.venujatech.netray.ui.CheckIpScreen
 import com.venujatech.netray.ui.LogsScreen
+import com.venujatech.netray.ui.QrScannerScreen
 import com.venujatech.netray.ui.SettingsScreen
 import com.venujatech.netray.ui.theme.NetrayTheme
 import com.venujatech.netray.vpn.NetrayVpnService
@@ -87,7 +88,6 @@ private fun NetrayScreen() {
     val pingResults = remember { mutableStateMapOf<String, String>() }
     val pinging = remember { mutableStateMapOf<String, Boolean>() }
     var selectedId by rememberSaveable { mutableStateOf("") }
-    var showImport by rememberSaveable { mutableStateOf(false) }
     var link by rememberSaveable { mutableStateOf("") }
     var importError by rememberSaveable { mutableStateOf("") }
     var storageError by remember { mutableStateOf("") }
@@ -101,6 +101,12 @@ private fun NetrayScreen() {
     var shareLink by remember { mutableStateOf("") }
     var shareCopied by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
+    var showImport by rememberSaveable { mutableStateOf(false) }
+    var showImportConfirm by rememberSaveable { mutableStateOf(false) }
+    var showQrScanner by remember { mutableStateOf(false) }
+    var pendingImportLink by rememberSaveable { mutableStateOf("") }
+    var pendingImportProfile by remember { mutableStateOf<Profile?>(null) }
+    var importConfirmError by rememberSaveable { mutableStateOf("") }
     val settings = remember { context.getSharedPreferences("settings", 0) }
     var themeMode by rememberSaveable { mutableStateOf(settings.getString("theme_mode", "system") ?: "system") }
     var uptime by remember { mutableLongStateOf(0) }
@@ -180,13 +186,29 @@ private fun NetrayScreen() {
     }
 
     NetrayTheme(themeMode = themeMode) {
-        ModalNavigationDrawer(
-            drawerState = drawerState,
-            drawerContent = {
-                ModalDrawerSheet(modifier = Modifier.width(280.dp)) {
-                    Spacer(Modifier.height(16.dp))
-                    Row(
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+        if (showQrScanner) {
+            QrScannerScreen(
+                onScanResult = { raw ->
+                    scope.launch {
+                        runCatching { withContext(Dispatchers.IO) { Profile.parse(raw) } }
+                            .onSuccess { profile ->
+                                pendingImportProfile = profile
+                                showQrScanner = false
+                                showImportConfirm = true
+                            }
+                            .onFailure { importError = it.message ?: "Invalid QR config"; showQrScanner = false }
+                    }
+                },
+                onClose = { showQrScanner = false }
+            )
+        } else {
+            ModalNavigationDrawer(
+                drawerState = drawerState,
+                drawerContent = {
+                    ModalDrawerSheet(modifier = Modifier.width(280.dp)) {
+                        Spacer(Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Image(
@@ -275,7 +297,9 @@ private fun NetrayScreen() {
                                     orientation = Orientation.Horizontal,
                                     state = rememberDraggableState { delta -> swipeDrag += delta },
                                     onDragStopped = { velocity ->
-                                        if (swipeDrag > 60f || swipeDrag < -60f || velocity > 300f || velocity < -300f) {
+                                        if (swipeDrag > 60f || velocity > 300f) {
+                                            scope.launch { drawerState.open() }
+                                        } else if (swipeDrag < -60f || velocity < -300f) {
                                             currentScreen = "logs"
                                         }
                                         swipeDrag = 0f
@@ -309,6 +333,41 @@ private fun NetrayScreen() {
                                     Icon(
                                         painter = painterResource(R.drawable.ic_lucide_plus),
                                         contentDescription = "Add VLESS profile",
+                                        tint = MaterialTheme.colorScheme.onBackground,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { showQrScanner = true },
+                                    enabled = storeReady,
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_lucide_qr_code),
+                                        contentDescription = "Scan QR code to import",
+                                        tint = MaterialTheme.colorScheme.onBackground,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                IconButton(
+                                    onClick = {
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                        val clip = clipboard.primaryClip
+                                        val text = clip?.getItemAt(0)?.text?.toString().orEmpty().trim()
+                                        if (text.isBlank()) {
+                                            importError = "Clipboard is empty"
+                                            showImport = true
+                                        } else {
+                                            pendingImportLink = text
+                                            showImportConfirm = true
+                                        }
+                                    },
+                                    enabled = storeReady,
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_lucide_copy),
+                                        contentDescription = "Import config from clipboard",
                                         tint = MaterialTheme.colorScheme.onBackground,
                                         modifier = Modifier.size(24.dp)
                                     )
@@ -378,18 +437,8 @@ private fun NetrayScreen() {
                                         onSelect = { selectedId = profile.id }, onDelete = { deleteTarget = profile },
                                         onEdit = { editLink = profile.link; editTarget = profile },
                                         onShare = {
-                                            val shareLink = generateShareLink(profile.link, profile.name)
-                                            val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, shareLink)
-                                            context.startActivity(Intent.createChooser(send, "Share VLESS profile"))
-                                        },
-                                        onQr = {
                                             shareTarget = profile
                                             shareLink = profile.link
-                                        },
-                                        onCopy = {
-                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                            clipboard.setPrimaryClip(ClipData.newPlainText("Netray config", profile.link))
-                                            Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
                                         })
                                 }
                             }
@@ -444,6 +493,7 @@ private fun NetrayScreen() {
                 }
             }
         }
+        }
     }
 
     if (showImport) AlertDialog(
@@ -455,16 +505,43 @@ private fun NetrayScreen() {
         } },
         confirmButton = { TextButton(onClick = {
             runCatching { Profile.parse(link) }.onSuccess { profile ->
-                scope.launch {
-                        if (!storeReady) { importError = "Saved profiles are unavailable; restart before changing them."; return@launch }
-                        runCatching { withContext(Dispatchers.IO) { store.save(profiles + profile) } }
-                        .onSuccess { profiles.add(profile); selectedId = profile.id; link = ""; showImport = false }
-                        .onFailure { importError = "Could not securely save profile" }
-                }
+                pendingImportProfile = profile
+                link = ""
+                showImport = false
+                showImportConfirm = true
             }.onFailure { importError = it.message ?: "Invalid VLESS link" }
         }) { Text("Add") } },
         dismissButton = { TextButton(onClick = { showImport = false }) { Text("Cancel") } },
-        containerColor = Card
+        containerColor = MaterialTheme.colorScheme.surface
+    )
+
+    if (showImportConfirm && pendingImportProfile != null) AlertDialog(
+        onDismissRequest = { showImportConfirm = false; pendingImportProfile = null; importConfirmError = "" },
+        title = { Text("Import config") },
+        text = { Column {
+            Text(pendingImportProfile!!.name, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text("${pendingImportProfile!!.server}:${pendingImportProfile!!.port}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            Text("This will add the config to your list.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (importConfirmError.isNotEmpty()) Text(importConfirmError, color = MaterialTheme.colorScheme.error)
+        } },
+        confirmButton = { TextButton(onClick = {
+            val profile = pendingImportProfile
+            if (profile == null) { showImportConfirm = false; return@TextButton }
+            scope.launch {
+                if (!storeReady) { importConfirmError = "Saved profiles are unavailable; restart before changing them."; return@launch }
+                runCatching { withContext(Dispatchers.IO) { store.save(profiles + profile) } }
+                    .onSuccess {
+                        profiles.add(profile)
+                        selectedId = profile.id
+                        showImportConfirm = false
+                        pendingImportProfile = null
+                    }
+                    .onFailure { importConfirmError = "Could not securely save profile" }
+            }
+        }) { Text("Import") } },
+        dismissButton = { TextButton(onClick = { showImportConfirm = false; pendingImportProfile = null; importConfirmError = "" }) { Text("Cancel") } },
+        containerColor = MaterialTheme.colorScheme.surface
     )
 
     editTarget?.let { original -> AlertDialog(
@@ -495,7 +572,7 @@ private fun NetrayScreen() {
                 .onFailure { editError = it.message ?: "Invalid VLESS link" }
         }) { Text("Save") } },
         dismissButton = { TextButton(onClick = { editTarget = null; editError = "" }) { Text("Cancel") } },
-        containerColor = Card
+        containerColor = MaterialTheme.colorScheme.surface
     ) }
 
     if (notificationError.isNotEmpty()) AlertDialog(
@@ -503,30 +580,33 @@ private fun NetrayScreen() {
         title = { Text("Notifications are disabled") },
         text = { Text(notificationError) },
         confirmButton = { TextButton(onClick = { notificationError = "" }) { Text("OK") } },
-        containerColor = Card
+        containerColor = MaterialTheme.colorScheme.surface
     )
 
-    deleteTarget?.let { profile -> AlertDialog(
-        onDismissRequest = { deleteTarget = null },
-        title = { Text("Delete profile?") },
-        text = { Text("Delete ${profile.name} from this device?") },
-        confirmButton = { TextButton(onClick = {
-            scope.launch {
-                val next = profiles.filterNot { it.id == profile.id }
-                runCatching { withContext(Dispatchers.IO) { store.save(next) } }
-                    .onSuccess {
-                        profiles.remove(profile)
-                        if (selectedId == profile.id) selectedId = next.firstOrNull()?.id.orEmpty()
-                        deleteTarget = null
-                    }
-                    .onFailure { storageError = "Could not save profile changes; the saved file was preserved."; deleteTarget = null }
-            }
-        }) { Text("Delete", color = Color(0xFFFF7777)) } },
-        dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } },
-        containerColor = Card
-    ) }
+    deleteTarget?.let { profile ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("Delete profile?") },
+            text = { Text("Delete ${profile.name} from this device?") },
+            confirmButton = { TextButton(onClick = {
+                scope.launch {
+                    val next = profiles.filterNot { it.id == profile.id }
+                    runCatching { withContext(Dispatchers.IO) { store.save(next) } }
+                        .onSuccess {
+                            profiles.remove(profile)
+                            if (selectedId == profile.id) selectedId = next.firstOrNull()?.id.orEmpty()
+                            deleteTarget = null
+                        }
+                        .onFailure { storageError = "Could not save profile changes; the saved file was preserved."; deleteTarget = null }
+                }
+            }) { Text("Delete", color = Color(0xFFFF7777)) } },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } },
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    }
 
-    shareTarget?.let { profile -> AlertDialog(
+    shareTarget?.let { profile ->
+        AlertDialog(
         onDismissRequest = { shareTarget = null; shareCopied = false },
         title = { Text("QR Code & Copy") },
         text = { Column {
@@ -563,9 +643,8 @@ private fun NetrayScreen() {
             Text(if (shareCopied) "Copied!" else "Copy", color = if (shareCopied) Green else MaterialTheme.colorScheme.primary)
         } },
         dismissButton = { TextButton(onClick = { shareTarget = null; shareCopied = false }) { Text("Close") } },
-        containerColor = Card
+        containerColor = MaterialTheme.colorScheme.surface
     ) }
-
 }
 
 @Composable
@@ -580,9 +659,7 @@ private fun ProfileCard(
     onSelect: () -> Unit,
     onDelete: () -> Unit,
     onEdit: () -> Unit,
-    onShare: () -> Unit,
-    onQr: () -> Unit,
-    onCopy: () -> Unit
+    onShare: () -> Unit
 ) {
     Column(
         Modifier
@@ -660,24 +737,6 @@ private fun ProfileCard(
                 )
             }
             Spacer(Modifier.width(4.dp))
-            IconButton(onClick = onQr, modifier = Modifier.size(38.dp)) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_lucide_qr_code),
-                    contentDescription = "Show QR code",
-                    tint = Muted,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            Spacer(Modifier.width(4.dp))
-            IconButton(onClick = onCopy, modifier = Modifier.size(38.dp)) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_lucide_copy),
-                    contentDescription = "Copy link",
-                    tint = Muted,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            Spacer(Modifier.width(4.dp))
             IconButton(
                 enabled = !connected && storeReady,
                 onClick = onEdit,
@@ -729,22 +788,6 @@ private fun startTunnel(context: android.content.Context, profileId: String?, mo
 private fun formatUptime(seconds: Long): String = "%02d:%02d:%02d".format(
     TimeUnit.SECONDS.toHours(seconds), TimeUnit.SECONDS.toMinutes(seconds) % 60, seconds % 60
 )
-
-/// Mirrors the Linux reference's generate_share_link: if the URI has no fragment,
-/// append the profile name as a remark so the link can be re-imported with its name.
-private fun generateShareLink(link: String, remark: String): String {
-    val trimmed = link.trim()
-    if (trimmed.isEmpty()) return trimmed
-    val encodedRemark = java.net.URLEncoder.encode(if (remark.isNotBlank()) remark else "Netray-Config", "UTF-8")
-    val knownSchemes = listOf("vless://", "vmess://", "trojan://", "ss://", "socks://", "socks5://",
-        "wireguard://", "wg://", "hy2://", "hysteria2://", "ssr://", "ssh://", "dnstt+ssh://", "http://", "https://")
-    for (scheme in knownSchemes) {
-        if (trimmed.startsWith(scheme, ignoreCase = true)) {
-            return if (trimmed.contains("#")) trimmed else "$trimmed#$encodedRemark"
-        }
-    }
-    return if (trimmed.contains("#")) trimmed else "vless://$trimmed#$encodedRemark"
-}
 
 /// Mirrors the Linux reference's latency::response_latency: performs an HTTP GET
 /// to gstatic.com/generate_204 through the tunnel/proxy and measures round-trip time.
