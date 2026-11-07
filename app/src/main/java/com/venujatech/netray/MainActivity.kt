@@ -443,7 +443,7 @@ private fun NetrayScreen() {
                                     modifier = Modifier.size(40.dp)
                                 ) {
                                     Icon(
-                                        painter = painterResource(R.drawable.ic_lucide_plus),
+                                        painter = painterResource(R.drawable.ic_add_profile),
                                         contentDescription = "Add VLESS profile",
                                         tint = MaterialTheme.colorScheme.onBackground,
                                         modifier = Modifier.size(24.dp)
@@ -455,7 +455,7 @@ private fun NetrayScreen() {
                                     modifier = Modifier.size(40.dp)
                                 ) {
                                     Icon(
-                                        painter = painterResource(R.drawable.ic_lucide_qr_code),
+                                        painter = painterResource(R.drawable.ic_qr_scan),
                                         contentDescription = "Scan QR code to import",
                                         tint = MaterialTheme.colorScheme.onBackground,
                                         modifier = Modifier.size(24.dp)
@@ -478,7 +478,7 @@ private fun NetrayScreen() {
                                     modifier = Modifier.size(40.dp)
                                 ) {
                                     Icon(
-                                        painter = painterResource(R.drawable.ic_lucide_copy),
+                                        painter = painterResource(R.drawable.ic_clipboard_import),
                                         contentDescription = "Import config from clipboard",
                                         tint = MaterialTheme.colorScheme.onBackground,
                                         modifier = Modifier.size(24.dp)
@@ -855,7 +855,7 @@ private fun ProfileCard(
         Modifier
             .fillMaxWidth()
             .background(Card, RoundedCornerShape(24.dp))
-            .then(if (selected) Modifier.border(2.dp, Color(0xFF05B9F3), RoundedCornerShape(24.dp)) else Modifier)
+            .then(if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(24.dp)) else Modifier)
             .clickable(enabled = !connected, onClick = onSelect)
             .padding(18.dp)
     ) {
