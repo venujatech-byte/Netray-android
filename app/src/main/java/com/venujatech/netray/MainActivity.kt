@@ -1272,20 +1272,22 @@ private fun ConnectionStatusLabel(
 
     LaunchedEffect(state, proxyState, profileId, proxyHttpPort) {
         if (connected) {
-            while (true) {
-                if (profileId.isNotBlank()) {
-                    val result = try {
-                        withContext(Dispatchers.IO) {
-                            if (proxyConnected) httpPingViaProxy(proxyHttpPort) else httpPing()
+            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    if (profileId.isNotBlank()) {
+                        val result = try {
+                            withContext(Dispatchers.IO) {
+                                if (proxyConnected) httpPingViaProxy(proxyHttpPort) else httpPing()
+                            }
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                            throw cancelled
+                        } catch (failure: Exception) {
+                            "Failed"
                         }
-                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                        throw cancelled
-                    } catch (failure: Exception) {
-                        "Failed"
+                        connectedPingMs = if (result.endsWith(" ms")) result.removeSuffix(" ms").toLongOrNull() else null
                     }
-                    connectedPingMs = if (result.endsWith(" ms")) result.removeSuffix(" ms").toLongOrNull() else null
+                    delay(5000)
                 }
-                delay(5000)
             }
         } else {
             connectedPingMs = null
