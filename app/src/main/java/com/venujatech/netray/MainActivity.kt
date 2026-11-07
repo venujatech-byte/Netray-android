@@ -1,6 +1,7 @@
 package com.venujatech.netray
 
 import android.app.Activity
+import android.graphics.Bitmap
 import android.content.ClipboardManager
 import android.content.ClipData
 import android.content.Context
@@ -36,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -72,6 +74,10 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.TimeUnit
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.QRCodeWriter
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 
 private val Background = Color(0xFF0B0E13)
 private val Card = Color(0xFF1B202A)
@@ -440,38 +446,26 @@ private fun NetrayScreen() {
                                 IconButton(
                                     onClick = { showImport = true },
                                     enabled = storeReady,
-                                    modifier = Modifier.size(40.dp),
-                                    shape = CircleShape,
-                                    colors = IconButtonDefaults.filledIconButtonColors(
-                                        containerColor = MaterialTheme.colorScheme.primary,
-                                        contentColor = Color.White
-                                    )
+                                    modifier = Modifier.size(40.dp)
                                 ) {
-                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.ic_lucide_plus),
-                                            contentDescription = "Add VLESS profile",
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_lucide_plus),
+                                        contentDescription = "Add VLESS profile",
+                                        tint = MaterialTheme.colorScheme.onBackground,
+                                        modifier = Modifier.size(24.dp)
+                                    )
                                 }
                                 IconButton(
                                     onClick = { showQrScanner = true },
                                     enabled = storeReady,
-                                    modifier = Modifier.size(40.dp),
-                                    shape = CircleShape,
-                                    colors = IconButtonDefaults.filledIconButtonColors(
-                                        containerColor = MaterialTheme.colorScheme.primary,
-                                        contentColor = Color.White
-                                    )
+                                    modifier = Modifier.size(40.dp)
                                 ) {
-                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.ic_lucide_scan_line),
-                                            contentDescription = "Scan QR code to import",
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_lucide_scan_line),
+                                        contentDescription = "Scan QR code to import",
+                                        tint = MaterialTheme.colorScheme.onBackground,
+                                        modifier = Modifier.size(24.dp)
+                                    )
                                 }
                                 IconButton(
                                     onClick = {
@@ -487,20 +481,14 @@ private fun NetrayScreen() {
                                         }
                                     },
                                     enabled = storeReady,
-                                    modifier = Modifier.size(40.dp),
-                                    shape = CircleShape,
-                                    colors = IconButtonDefaults.filledIconButtonColors(
-                                        containerColor = MaterialTheme.colorScheme.primary,
-                                        contentColor = Color.White
-                                    )
+                                    modifier = Modifier.size(40.dp)
                                 ) {
-                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.ic_lucide_scan_square),
-                                            contentDescription = "Import config from clipboard",
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_lucide_scan_square),
+                                        contentDescription = "Import config from clipboard",
+                                        tint = MaterialTheme.colorScheme.onBackground,
+                                        modifier = Modifier.size(24.dp)
+                                    )
                                 }
                                 Box {
                                     IconButton(
@@ -709,7 +697,7 @@ private fun NetrayScreen() {
                                         contentColor = Color.White
                                     )
                                 ) {
-                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                         Icon(
                                             painter = painterResource(if (connected) R.drawable.ic_stop else R.drawable.ic_start),
                                             contentDescription = if (connected) "Disconnect" else "Connect",
@@ -846,6 +834,7 @@ private fun NetrayScreen() {
         ShareDialog(
             profile = profile,
             shareLink = shareLink,
+            darkTheme = isDark,
             shareCopied = shareCopied,
             shareProtected = shareProtected,
             onCopy = {
@@ -1071,30 +1060,48 @@ private fun httpPingViaProxy(proxyPort: Int, timeoutMs: Int = 5000): String {
 private fun ShareDialog(
     profile: Profile,
     shareLink: String,
+    darkTheme: Boolean,
     shareCopied: Boolean,
     shareProtected: Boolean,
     onCopy: () -> Unit,
     onClose: () -> Unit,
     onProtectChange: (Boolean) -> Unit
 ) {
+    val qrBitmap by produceState<Bitmap?>(initialValue = null, shareLink) {
+        value = withContext(Dispatchers.Default) {
+            runCatching { createQrBitmap(shareLink) }.getOrNull()
+        }
+    }
+    val dialogSurface = if (darkTheme) Color(0xFF1B202A) else Color(0xFFF7F9FF)
+    val dialogText = if (darkTheme) Color(0xFFE0E2E8) else Color(0xFF181C20)
+    val dialogTextVariant = if (darkTheme) Color(0xFFC2C7CF) else Color(0xFF42474E)
+
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text("QR Code & Copy") },
+        title = { Text("QR Code & Copy", color = dialogText) },
         text = { Column(modifier = Modifier.fillMaxWidth()) {
-            // Large QR code placeholder at top
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(200.dp)
-                    .background(Color(0xFFFFFFFF))
+                    .background(Color.White, RoundedCornerShape(8.dp))
+                    .padding(12.dp)
                     .align(Alignment.CenterHorizontally),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "QR CODE",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (qrBitmap != null) {
+                    Image(
+                        bitmap = qrBitmap!!.asImageBitmap(),
+                        contentDescription = "QR code for ${profile.name}",
+                        modifier = Modifier.fillMaxHeight().aspectRatio(1f)
+                    )
+                } else {
+                    Text(
+                        text = "Could not generate QR code for this link.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = dialogTextVariant
+                    )
+                }
             }
             Spacer(Modifier.height(12.dp))
             // Hint
@@ -1112,7 +1119,7 @@ private fun ShareDialog(
                 Text(
                     text = "Consider using file export if configuration too complex",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = dialogTextVariant
                 )
             }
             Spacer(Modifier.height(16.dp))
@@ -1120,7 +1127,7 @@ private fun ShareDialog(
             Text(
                 text = "Link",
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = dialogTextVariant,
                 modifier = Modifier.padding(horizontal = 16.dp).padding(top = 0.dp)
             )
             Row(
@@ -1130,7 +1137,7 @@ private fun ShareDialog(
                 Text(
                     text = shareLink,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = dialogText,
                     modifier = Modifier.weight(1f)
                 )
                 IconButton(
@@ -1179,6 +1186,22 @@ private fun ShareDialog(
             }
         } },
         confirmButton = { TextButton(onClick = onClose) { Text("Close") } },
-        containerColor = MaterialTheme.colorScheme.surface
+        containerColor = dialogSurface
     )
+}
+
+private fun createQrBitmap(content: String): Bitmap {
+    require(content.isNotBlank()) { "QR content cannot be empty" }
+    val hints = mapOf(
+        EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M,
+        EncodeHintType.MARGIN to 2
+    )
+    val matrix = QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, 512, 512, hints)
+    val bitmap = Bitmap.createBitmap(matrix.width, matrix.height, Bitmap.Config.ARGB_8888)
+    for (y in 0 until matrix.height) {
+        for (x in 0 until matrix.width) {
+            bitmap.setPixel(x, y, if (matrix.get(x, y)) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+        }
+    }
+    return bitmap
 }
