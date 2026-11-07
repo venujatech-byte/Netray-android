@@ -9,6 +9,7 @@ import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
 import android.provider.Settings
+import android.webkit.WebView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -104,6 +105,7 @@ private fun NetrayScreen() {
     var shareTarget by remember { mutableStateOf<Profile?>(null) }
     var shareLink by remember { mutableStateOf("") }
     var shareCopied by remember { mutableStateOf(false) }
+    var shareProtected by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
     var showImport by rememberSaveable { mutableStateOf(false) }
     var showImportConfirm by rememberSaveable { mutableStateOf(false) }
@@ -799,45 +801,21 @@ private fun NetrayScreen() {
     }
 
     shareTarget?.let { profile ->
-        AlertDialog(
-        onDismissRequest = { shareTarget = null; shareCopied = false },
-        title = { Text("QR Code & Copy") },
-        text = { Column {
-            Text(
-                text = "QR Code",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = "Scan to import this config",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-            Text(
-                text = "Link",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = shareLink,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 3,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-            )
-        } },
-        confirmButton = { TextButton(onClick = {
-            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            clipboard.setPrimaryClip(ClipData.newPlainText("Netray config", shareLink))
-            shareCopied = true
-            Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
-        }) {
-            Text(if (shareCopied) "Copied!" else "Copy", color = if (shareCopied) Green else MaterialTheme.colorScheme.primary)
-        } },
-        dismissButton = { TextButton(onClick = { shareTarget = null; shareCopied = false }) { Text("Close") } },
-        containerColor = MaterialTheme.colorScheme.surface
-    ) }
+        ShareDialog(
+            profile = profile,
+            shareLink = shareLink,
+            shareCopied = shareCopied,
+            shareProtected = shareProtected,
+            onCopy = {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("Netray config", shareLink))
+                shareCopied = true
+                Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+            },
+            onClose = { shareTarget = null; shareCopied = false; shareProtected = false },
+            onProtectChange = { shareProtected = it }
+        )
+    }
 }
 
 @Composable
@@ -1044,4 +1022,121 @@ private fun httpPingViaProxy(proxyPort: Int, timeoutMs: Int = 5000): String {
             connection.disconnect()
         }
     }.getOrElse { "Failed" }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ShareDialog(
+    profile: Profile,
+    shareLink: String,
+    shareCopied: Boolean,
+    shareProtected: Boolean,
+    onCopy: () -> Unit,
+    onClose: () -> Unit,
+    onProtectChange: (Boolean) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("QR Code & Copy") },
+        text = { Column(modifier = Modifier.fillMaxWidth()) {
+            // Large QR code placeholder at top
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
+                    .background(Color(0xFFFFFFFF))
+                    .align(Alignment.CenterHorizontally),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "QR CODE",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            // Hint
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_lucide_info),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Consider using file export if configuration too complex",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+            // Link section
+            Text(
+                text = "Link",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp).padding(top = 0.dp)
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = shareLink,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(
+                    onClick = onCopy,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_lucide_copy),
+                        contentDescription = "Copy link",
+                        tint = if (shareCopied) Green else MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+            if (shareCopied) {
+                Text(
+                    text = "Copied to clipboard",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Green,
+                    modifier = Modifier.padding(horizontal = 16.dp).padding(top = 4.dp)
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+            // Protect / Standard toggle
+            Text(
+                text = "Protection",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp).padding(top = 0.dp)
+            )
+            SingleChoiceSegmentedButtonRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+            ) {
+                SegmentedButton(
+                    selected = !shareProtected,
+                    onClick = { onProtectChange(false) },
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    label = { Text("Standard") }
+                )
+                SegmentedButton(
+                    selected = shareProtected,
+                    onClick = { onProtectChange(true) },
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                    label = { Text("Protect") }
+                )
+            }
+        } },
+        confirmButton = { TextButton(onClick = onClose) { Text("Close") } },
+        containerColor = MaterialTheme.colorScheme.surface
+    )
 }
