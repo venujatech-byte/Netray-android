@@ -122,6 +122,7 @@ private fun NetrayScreen() {
     var instantImport by remember { mutableStateOf(settings.getBoolean("instant_import", false)) }
     var socksPort by remember { mutableIntStateOf(settings.getInt("proxy_socks_port", 10808)) }
     var httpPort by remember { mutableIntStateOf(settings.getInt("proxy_http_port", 10809)) }
+    var accentColor by remember { mutableStateOf(settings.getString("accent_color", "blue") ?: "blue") }
     var uptime by remember { mutableLongStateOf(0) }
     var connectedPingMs by remember { mutableStateOf<Long?>(null) }
     var connectedPinging by remember { mutableStateOf(false) }
@@ -361,6 +362,11 @@ private fun NetrayScreen() {
                     onHttpPortChange = { port ->
                         httpPort = port
                         settings.edit().putInt("proxy_http_port", port).apply()
+                    },
+                    accentColor = accentColor,
+                    onAccentColorChange = { checked ->
+                        accentColor = checked
+                        settings.edit().putString("accent_color", checked).apply()
                     },
                     vpnBusy = anyBusy,
                     onCheckForUpdates = { currentScreen = "check_ip" },

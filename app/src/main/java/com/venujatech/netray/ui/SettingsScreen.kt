@@ -1,14 +1,21 @@
 package com.venujatech.netray.ui
 
 import android.content.SharedPreferences
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.venujatech.netray.R
 
@@ -39,11 +46,14 @@ fun SettingsScreen(
     onSocksPortChange: (Int) -> Unit,
     httpPort: Int,
     onHttpPortChange: (Int) -> Unit,
+    accentColor: String,
+    onAccentColorChange: (String) -> Unit,
     vpnBusy: Boolean,
     onCheckForUpdates: () -> Unit,
     onViewLogs: () -> Unit
 ) {
     var selectedMode by remember { mutableIntStateOf(settings.getInt("connection_mode", 0)) }
+    var accentColor by remember { mutableStateOf(settings.getString("accent_color", "blue") ?: "blue") }
 
     Scaffold(
         topBar = {
@@ -59,9 +69,9 @@ fun SettingsScreen(
     ) { padding ->
         Column(
             modifier = Modifier
-                .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Appearance
@@ -75,6 +85,30 @@ fun SettingsScreen(
                     ThemeOption("System default", "system", themeMode, onThemeChange)
                     ThemeOption("Light theme", "light", themeMode, onThemeChange)
                     ThemeOption("Dark theme", "dark", themeMode, onThemeChange)
+                }
+            }
+
+            // Accent Color
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Accent Color", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                    Text(
+                        "Choose the accent color used for buttons, icons, and active states.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        AccentColorChip("Blue", Color(0xFF2788FF), accentColor, onAccentColorChange)
+                        AccentColorChip("Green", Color(0xFF36D399), accentColor, onAccentColorChange)
+                        AccentColorChip("Purple", Color(0xFFB366FF), accentColor, onAccentColorChange)
+                        AccentColorChip("Orange", Color(0xFFFF8C42), accentColor, onAccentColorChange)
+                    }
                 }
             }
 
@@ -310,5 +344,45 @@ private fun ThemeOption(
         )
         Spacer(Modifier.width(8.dp))
         Text(title, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+@Composable
+private fun AccentColorChip(
+    name: String,
+    color: Color,
+    selected: String,
+    onSelect: (String) -> Unit
+) {
+    val isSelected = selected == name.lowercase()
+    Column(
+        modifier = Modifier
+            .clickable { onSelect(name.lowercase()) }
+            .size(64.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .border(if (isSelected) 3.dp else 0.dp, Color.White, CircleShape)
+                .background(color),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isSelected) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_lucide_check),
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+        Text(
+            text = name,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp)
+        )
     }
 }
