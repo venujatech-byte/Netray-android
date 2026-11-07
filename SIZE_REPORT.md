@@ -57,6 +57,15 @@ The four-ABI Go core is the main reason a universal APK is ~170 MB. The next ran
 
 The AAB estimates use compressed base-module entries plus compressed native entries for the ABI. They are estimates rather than a `bundletool get-size total` result because bundletool is not installed in this environment. The universal APK still contains both ARM ABIs for sideloading.
 
-The bundled `libgojni.so` remains ~33–34 MB per ARM ABI uncompressed and is still the largest component. Stripping did not apply to it because the AAR's Go shared library is prebuilt; optimize only by changing/rebuilding the upstream integration and checking MPL obligations. The Xray source archive remains bundled for source availability.
+The bundled `libgojni.so` remains ~33–34 MB per ARM ABI uncompressed and is still the largest component. Stripping did not apply to it because the AAR's Go shared library is prebuilt; optimize only by changing/rebuilding the upstream integration and checking MPL obligations. Removing ML Kit and its `barhopper_v3.so` libraries cut another ~20 MB from the universal APK. The Xray source archive remains bundled for source availability. An unused Rust QR SVG JNI function and the Rust `qrcode` crate were also removed; QR image and live decoding now both use the already-needed ZXing core.
+
+### Release-size batch 2 (remove dead Rust QR generator)
+
+| Metric | Batch 1 | Batch 2 | Delta |
+|---|---:|---:|---:|
+| Universal release APK | 73,261,448 bytes | 73,146,696 bytes | -114,752 bytes (-0.16%) |
+| Release AAB | 31,285,088 bytes | 31,231,327 bytes | -53,761 bytes (-0.17%) |
+| AAB arm64-v8a download estimate | 15,601,558 bytes | 15,571,895 bytes | -0.19% |
+| AAB armeabi-v7a download estimate | 16,164,475 bytes | 16,138,842 bytes | -0.16% |
 
 Runtime before/after remains unmeasured for connected state; idle PSS/startup measurements after the split build are recorded when the debug APK is installed from the requested command.

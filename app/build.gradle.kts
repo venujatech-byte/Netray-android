@@ -49,6 +49,12 @@ val buildRustBackend by tasks.registering(Exec::class) {
 
 tasks.named("preBuild").configure { dependsOn(buildLibXray, buildRustBackend) }
 
+tasks.register<Exec>("checkReleaseApkSize") {
+    dependsOn("assembleRelease")
+    workingDir(rootProject.projectDir)
+    commandLine("bash", "scripts/check-apk-size.sh")
+}
+
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
