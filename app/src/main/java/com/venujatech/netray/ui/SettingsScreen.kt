@@ -18,6 +18,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.venujatech.netray.R
+import com.venujatech.netray.ui.theme.LocalNetrayPalette
+import com.venujatech.netray.ui.theme.colorForAccent
+import com.venujatech.netray.ui.theme.onColorFor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -97,10 +100,10 @@ fun SettingsScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            AccentColorChip("Blue", Color(0xFF2788FF), accentColor, onAccentColorChange)
-                            AccentColorChip("Green", Color(0xFF36D399), accentColor, onAccentColorChange)
-                            AccentColorChip("Purple", Color(0xFFB366FF), accentColor, onAccentColorChange)
-                            AccentColorChip("Orange", Color(0xFFFF8C42), accentColor, onAccentColorChange)
+                            AccentColorChip("Blue", colorForAccent("blue"), accentColor, onAccentColorChange)
+                            AccentColorChip("Green", colorForAccent("green"), accentColor, onAccentColorChange)
+                            AccentColorChip("Purple", colorForAccent("purple"), accentColor, onAccentColorChange)
+                            AccentColorChip("Orange", colorForAccent("orange"), accentColor, onAccentColorChange)
                         }
                     }
                 }
@@ -340,6 +343,8 @@ private fun AccentColorChip(
     onSelect: (String) -> Unit
 ) {
     val isSelected = selected == name.lowercase()
+    val palette = LocalNetrayPalette.current
+    val contentColor = onColorFor(color)
     Column(
         modifier = Modifier
             .clickable { onSelect(name.lowercase()) }
@@ -350,7 +355,7 @@ private fun AccentColorChip(
             modifier = Modifier
                 .size(40.dp)
                 .clip(CircleShape)
-                .border(if (isSelected) 3.dp else 0.dp, Color.White, CircleShape)
+                .border(if (isSelected) 3.dp else 0.dp, palette.textPrimary, CircleShape)
                 .background(color),
             contentAlignment = Alignment.Center
         ) {
@@ -358,7 +363,7 @@ private fun AccentColorChip(
                 Icon(
                     painter = painterResource(R.drawable.ic_lucide_check),
                     contentDescription = null,
-                    tint = Color.White,
+                    tint = contentColor,
                     modifier = Modifier.size(20.dp)
                 )
             }

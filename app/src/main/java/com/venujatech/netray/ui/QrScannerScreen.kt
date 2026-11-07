@@ -41,6 +41,7 @@ import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import com.venujatech.netray.R
+import com.venujatech.netray.ui.theme.LocalNetrayPalette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -56,6 +57,7 @@ fun QrScannerScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val palette = LocalNetrayPalette.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var cameraDenied by remember { mutableStateOf(false) }
     var scanning by remember { mutableStateOf(true) }
@@ -272,8 +274,8 @@ fun QrScannerScreen(
                     icon = R.drawable.ic_lucide_image,
                     contentDescription = stringResource(R.string.qr_pick_image_description),
                     enabled = !decodingImage,
-                    background = Color(0x99000000),
-                    tint = Color.White,
+                    background = palette.controlScrim,
+                    tint = palette.textPrimary,
                     onClick = { pickImage() }
                 )
                 if (hasFlash) {
@@ -281,8 +283,8 @@ fun QrScannerScreen(
                         icon = if (torchOn) R.drawable.ic_lucide_flashlight else R.drawable.ic_lucide_flashlight_off,
                         contentDescription = stringResource(if (torchOn) R.string.qr_torch_off_description else R.string.qr_torch_on_description),
                         enabled = cameraReady && camera != null && !decodingImage,
-                        background = if (torchOn) MaterialTheme.colorScheme.primary else Color(0x99000000),
-                        tint = if (torchOn) MaterialTheme.colorScheme.onPrimary else Color.White,
+                        background = if (torchOn) palette.primary else palette.controlScrim,
+                        tint = if (torchOn) palette.onPrimary else palette.textPrimary,
                         onClick = { camera?.cameraControl?.enableTorch(torchOn.not()) }
                     )
                 }

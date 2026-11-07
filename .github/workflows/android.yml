@@ -32,6 +32,8 @@ jobs:
         run: cargo install cargo-ndk --locked
       - name: Test Rust backend
         run: cargo test --manifest-path native/Cargo.toml
+      - name: Check theme color tokens
+        run: bash scripts/check-theme-colors.sh
       - name: Build debug APK
         run: bash ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4

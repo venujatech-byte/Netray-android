@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import com.venujatech.netray.ui.theme.LocalNetrayPalette
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -46,6 +47,7 @@ fun RawConfigDialog(
     onOpenEditor: () -> Unit,
     onCancel: () -> Unit
 ) {
+    val palette = LocalNetrayPalette.current
     AlertDialog(
         onDismissRequest = onCancel,
         title = { Text(stringResource(R.string.raw_config_title)) },
@@ -70,8 +72,8 @@ fun RawConfigDialog(
                     modifier = Modifier.fillMaxWidth().height(64.dp),
                     shape = RoundedCornerShape(8.dp),
                     colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                        containerColor = Color(0xFFF44336),
-                        contentColor = Color.White
+                        containerColor = palette.primary,
+                        contentColor = palette.onPrimary
                     )
                 ) {
                     Text(stringResource(R.string.action_open_text_editor), fontSize = 16.sp)

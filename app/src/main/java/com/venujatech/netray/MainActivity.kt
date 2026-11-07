@@ -39,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
@@ -53,6 +54,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -78,6 +80,9 @@ import com.venujatech.netray.ui.LogsScreen
 import com.venujatech.netray.ui.QrScannerScreen
 import com.venujatech.netray.ui.SettingsScreen
 import com.venujatech.netray.ui.theme.NetrayTheme
+import com.venujatech.netray.ui.theme.LocalNetrayPalette
+import com.venujatech.netray.ui.theme.colorForAccent
+import com.venujatech.netray.ui.theme.paletteForAccent
 import com.venujatech.netray.ui.theme.darkColorSchemeWithAccent
 import com.venujatech.netray.ui.theme.lightColorSchemeWithAccent
 import com.venujatech.netray.vpn.NetrayVpnService
@@ -96,19 +101,8 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 
-private val Background = Color(0xFF0B0E13)
-private val Card = Color(0xFF1B202A)
-private val Blue = Color(0xFF2788FF)
-private val Muted = Color(0xFF93A1B5)
-private val Green = Color(0xFF36D399)
-
 fun colorSchemeForAccent(accentColor: String, isDark: Boolean): ColorScheme {
-    val accent = when (accentColor) {
-        "green" -> Color(0xFF36D399)
-        "purple" -> Color(0xFFB366FF)
-        "orange" -> Color(0xFFFF8C42)
-        else -> Color(0xFF2788FF) // blue default
-    }
+    val accent = colorForAccent(accentColor)
     return if (isDark) {
         darkColorSchemeWithAccent(accent)
     } else {
@@ -119,6 +113,21 @@ fun colorSchemeForAccent(accentColor: String, isDark: Boolean): ColorScheme {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val preferences = getSharedPreferences("settings", MODE_PRIVATE)
+        val mode = preferences.getString("theme_mode", "system") ?: "system"
+        val dark = when (mode) {
+            "dark" -> true
+            "light" -> false
+            else -> (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+        }
+        val startupPalette = paletteForAccent(preferences.getString("accent_color", "blue") ?: "blue", dark)
+        window.decorView.setBackgroundColor(startupPalette.background.toArgb())
+        window.statusBarColor = startupPalette.background.toArgb()
+        window.navigationBarColor = startupPalette.background.toArgb()
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = !dark
+            isAppearanceLightNavigationBars = !dark
+        }
         setContent { NetrayScreen() }
     }
 }
@@ -420,8 +429,18 @@ private fun NetrayScreen() {
     }
 
     val isDark = themeMode == "dark" || (themeMode == "system" && androidx.compose.foundation.isSystemInDarkTheme())
+    val palette = paletteForAccent(accentColor, isDark)
     val colorScheme = colorSchemeForAccent(accentColor, isDark)
-    NetrayTheme(themeMode = themeMode, dynamicColor = false, colorScheme = colorScheme) {
+    NetrayTheme(themeMode = themeMode, dynamicColor = false, colorScheme = colorScheme, palette = palette) {
+        androidx.compose.runtime.SideEffect {
+            val window = (context as? Activity)?.window ?: return@SideEffect
+            window.statusBarColor = palette.background.toArgb()
+            window.navigationBarColor = palette.background.toArgb()
+            WindowCompat.getInsetsController(window, window.decorView).apply {
+                isAppearanceLightStatusBars = !isDark
+                isAppearanceLightNavigationBars = !isDark
+            }
+        }
         if (rawEditorVisible) {
             RawJsonEditorScreen(
                 initialJson = rawJson,
@@ -486,7 +505,7 @@ private fun NetrayScreen() {
                         Spacer(Modifier.width(16.dp))
                         Column {
                             Text("Netray", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                            Text("v0.1.0", style = MaterialTheme.typography.bodySmall, color = Muted)
+                            Text("v0.1.0", style = MaterialTheme.typography.bodySmall, color = palette.textSecondary)
                         }
                     }
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
@@ -665,13 +684,13 @@ private fun NetrayScreen() {
                                         expanded = addMenuExpanded,
                                         onDismissRequest = { addMenuExpanded = false },
                                         modifier = Modifier.width(280.dp),
-                                        containerColor = Color(0xFF2C2C2C)
+                                        containerColor = palette.menuSurface
                                     ) {
                                         ProtocolKind.menuOrder.forEach { protocol ->
                                             DropdownMenuItem(
                                                 text = {
                                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                                        Text(stringResource(protocol.titleRes), color = Color.White)
+                                                        Text(stringResource(protocol.titleRes), color = palette.textPrimary)
                                                         Spacer(Modifier.weight(1f))
                                                         ProtocolBadge(protocol.badge)
                                                     }
@@ -949,7 +968,7 @@ private fun NetrayScreen() {
                                     shape = CircleShape,
                                     colors = IconButtonDefaults.filledIconButtonColors(
                                         containerColor = MaterialTheme.colorScheme.primary,
-                                        contentColor = Color.White
+                                        contentColor = palette.onPrimary
                                     )
                                 ) {
                                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -961,7 +980,7 @@ private fun NetrayScreen() {
                                         if (anyBusy) {
                                             CircularProgressIndicator(
                                                 modifier = Modifier.size(20.dp),
-                                                color = Color.White,
+                                                color = palette.onPrimary,
                                                 strokeWidth = 2.5.dp
                                             )
                                         }
@@ -1013,10 +1032,10 @@ private fun NetrayScreen() {
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
                     shape = RoundedCornerShape(8.dp),
                     colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color(0xFF191C24),
-                        unfocusedContainerColor = Color(0xFF191C24),
-                        focusedIndicatorColor = Color(0xFF343844),
-                        unfocusedIndicatorColor = Color(0xFF343844)
+                        focusedContainerColor = palette.surfaceVariant,
+                        unfocusedContainerColor = palette.surfaceVariant,
+                        focusedIndicatorColor = palette.outline,
+                        unfocusedIndicatorColor = palette.outline
                     )
                 )
             }
@@ -1026,7 +1045,7 @@ private fun NetrayScreen() {
                 TextButton(
                     onClick = { showImport = false; importInProgress = false; link = ""; importError = "" },
                     enabled = !importInProgress
-                ) { Text(stringResource(R.string.action_cancel), color = Color(0xFFFF8075)) }
+                ) { Text(stringResource(R.string.action_cancel), color = palette.error) }
                 Button(
                     onClick = {
                         val text = link.trim()
@@ -1040,10 +1059,10 @@ private fun NetrayScreen() {
                         }
                     },
                     enabled = link.isNotBlank() && !importInProgress,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF8075), contentColor = Color.White),
+                    colors = ButtonDefaults.buttonColors(containerColor = palette.primary, contentColor = palette.onPrimary),
                     shape = RoundedCornerShape(24.dp)
                 ) {
-                    if (importInProgress) CircularProgressIndicator(Modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                    if (importInProgress) CircularProgressIndicator(Modifier.size(20.dp), color = palette.onPrimary, strokeWidth = 2.dp)
                     else Text(stringResource(R.string.action_import))
                 }
             }
@@ -1078,7 +1097,7 @@ private fun NetrayScreen() {
                         }
                         .onFailure { storageError = "Could not save profile changes; the saved file was preserved."; deleteTarget = null }
                 }
-            }) { Text("Delete", color = Color(0xFFFF7777)) } },
+            }) { Text("Delete", color = palette.error) } },
             dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } },
             containerColor = MaterialTheme.colorScheme.surface
         )
@@ -1088,7 +1107,6 @@ private fun NetrayScreen() {
         ShareDialog(
             profile = profile,
             shareLink = shareLink,
-            darkTheme = isDark,
             shareCopied = shareCopied,
             onCopy = {
                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -1115,11 +1133,12 @@ private fun ProfileCard(
     onEdit: () -> Unit,
     onShare: () -> Unit
 ) {
+    val palette = LocalNetrayPalette.current
     Column(
         Modifier
             .fillMaxWidth()
             .wrapContentHeight()
-            .background(Card, RoundedCornerShape(24.dp))
+            .background(palette.card, RoundedCornerShape(24.dp))
             .then(if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(24.dp)) else Modifier)
             .clickable(enabled = !connected, onClick = onSelect)
             .padding(18.dp)
@@ -1128,7 +1147,7 @@ private fun ProfileCard(
             Icon(
                 painter = painterResource(R.drawable.ic_lucide_server),
                 contentDescription = null,
-                tint = Color(0xFF18C9FF),
+                tint = palette.serverIcon,
                 modifier = Modifier.size(20.dp)
             )
             Text(
@@ -1136,7 +1155,7 @@ private fun ProfileCard(
                 modifier = Modifier.weight(1f).padding(start = 10.dp),
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 16.sp,
-                color = Color.White,
+                color = palette.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -1147,21 +1166,21 @@ private fun ProfileCard(
         }
         Text(
             text = profile.endpoint,
-            color = Muted,
+            color = palette.textSecondary,
             fontSize = 13.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 5.dp)
         )
-        HorizontalDivider(Modifier.padding(top = 10.dp), color = Color(0xFF2B3340))
+        HorizontalDivider(Modifier.padding(top = 10.dp), color = palette.divider)
         Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             if (pingResult != null) {
                 Text(
                     text = pingResult,
-                    color = if (pingResult == "Failed") Color(0xFFFF807D) else Color(0xFF60CFFF),
+                    color = if (pingResult == "Failed") palette.error else palette.latency,
                     fontSize = 12.sp,
                     modifier = Modifier
-                        .background(Color(0xFF111821), RoundedCornerShape(18.dp))
+                        .background(palette.latencySurface, RoundedCornerShape(18.dp))
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 )
             }
@@ -1169,17 +1188,17 @@ private fun ProfileCard(
             Box(
                 Modifier
                     .size(38.dp)
-                    .background(Blue, CircleShape)
+                    .background(palette.primary, CircleShape)
                     .clickable(enabled = !pinging, onClick = onPing),
                 contentAlignment = Alignment.Center
             ) {
                 if (pinging) {
-                    CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                    CircularProgressIndicator(Modifier.size(18.dp), color = palette.onPrimary, strokeWidth = 2.dp)
                 } else {
                     Icon(
                         painter = painterResource(R.drawable.ic_lucide_activity),
                         contentDescription = "Test latency",
-                        tint = Color.White,
+                        tint = palette.onPrimary,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -1189,7 +1208,7 @@ private fun ProfileCard(
                 Icon(
                     painter = painterResource(R.drawable.ic_lucide_share_2),
                     contentDescription = "Share profile",
-                    tint = Muted,
+                    tint = palette.textSecondary,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -1202,7 +1221,7 @@ private fun ProfileCard(
                 Icon(
                     painter = painterResource(R.drawable.ic_lucide_pencil),
                     contentDescription = "Edit profile",
-                    tint = if (connected || !storeReady) Muted.copy(alpha = .45f) else Muted,
+                    tint = if (connected || !storeReady) palette.textSecondary.copy(alpha = .45f) else palette.textSecondary,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -1215,7 +1234,7 @@ private fun ProfileCard(
                 Icon(
                     painter = painterResource(R.drawable.ic_lucide_trash_2),
                     contentDescription = "Delete profile",
-                    tint = if (connected || !storeReady) Muted.copy(alpha = .45f) else Muted,
+                    tint = if (connected || !storeReady) palette.textSecondary.copy(alpha = .45f) else palette.textSecondary,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -1295,22 +1314,24 @@ private fun ConnectionStatusLabel(
 
 @Composable
 private fun Tag(text: String, active: Boolean = false) {
+    val palette = LocalNetrayPalette.current
     Text(
         text = text,
-        color = if (active) Color(0xFF60CFFF) else Muted,
+        color = if (active) palette.latency else palette.textSecondary,
         fontSize = 11.sp,
         modifier = Modifier
-            .background(if (active) Color(0xFF27364A) else Color(0xFF222833), RoundedCornerShape(6.dp))
+            .background(if (active) palette.activeTag else palette.inactiveTag, RoundedCornerShape(6.dp))
             .padding(horizontal = 9.dp, vertical = 6.dp)
     )
 }
 
 @Composable
 private fun ProtocolBadge(kind: String) {
-    val background = if (kind == "NEW") Color(0xFFA8650F) else Color(0xFF6B7F1A)
+    val palette = LocalNetrayPalette.current
+    val background = if (kind == "NEW") palette.badgeNew else if (kind == "NATIVE") palette.badgeNative else palette.badgeXray
     Text(
         text = kind,
-        color = Color.White,
+        color = palette.onBadge,
         fontSize = 12.sp,
         modifier = Modifier
             .background(background, RoundedCornerShape(5.dp))
@@ -1426,20 +1447,20 @@ private fun httpPingViaProxy(proxyPort: Int, timeoutMs: Int = 5000): String {
 private fun ShareDialog(
     profile: Profile,
     shareLink: String,
-    darkTheme: Boolean,
     shareCopied: Boolean,
     onCopy: () -> Unit,
     onClose: () -> Unit
 ) {
+    val palette = LocalNetrayPalette.current
     val qrBitmap by produceState<Bitmap?>(initialValue = null, shareLink) {
         value = withContext(Dispatchers.Default) {
             runCatching { createQrBitmap(shareLink) }.getOrNull()
         }
     }
-    val dialogSurface = if (darkTheme) Color(0xFF1B202A) else Color(0xFFF7F9FF)
-    val dialogCard = if (darkTheme) Color(0xFF252A34) else Color(0xFFE1E5ED)
-    val dialogText = if (darkTheme) Color(0xFFE0E2E8) else Color(0xFF181C20)
-    val dialogTextVariant = if (darkTheme) Color(0xFFC2C7CF) else Color(0xFF42474E)
+    val dialogSurface = palette.surface
+    val dialogCard = palette.surfaceVariant
+    val dialogText = palette.textPrimary
+    val dialogTextVariant = palette.textSecondary
 
     AlertDialog(
         onDismissRequest = onClose,
@@ -1449,7 +1470,7 @@ private fun ShareDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(250.dp)
-                    .background(Color.White, RoundedCornerShape(8.dp))
+                    .background(palette.qrBackground, RoundedCornerShape(8.dp))
                     .padding(12.dp)
                     .align(Alignment.CenterHorizontally),
                 contentAlignment = Alignment.Center
@@ -1525,7 +1546,7 @@ private fun ShareDialog(
                         Icon(
                             painter = painterResource(R.drawable.ic_lucide_copy),
                             contentDescription = "Copy link",
-                            tint = if (shareCopied) Green else dialogTextVariant,
+                            tint = if (shareCopied) palette.success else dialogTextVariant,
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -1535,7 +1556,7 @@ private fun ShareDialog(
                 Text(
                     text = "Copied to clipboard",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Green,
+                    color = palette.success,
                     modifier = Modifier.padding(horizontal = 16.dp).padding(top = 4.dp)
                 )
             }
