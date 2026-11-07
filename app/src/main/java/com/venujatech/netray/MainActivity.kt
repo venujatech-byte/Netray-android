@@ -97,15 +97,15 @@ private fun NetrayScreen() {
     val busy = state is NetrayVpnService.State.Connecting || state is NetrayVpnService.State.Stopping
     val selectedProfile = profiles.firstOrNull { it.id == selectedId }
 
-    var currentScreen by rememberSaveable { mutableStateOf("servers") }
+    var currentScreen by rememberSaveable { mutableStateOf("configs") }
     var selectedMode by rememberSaveable { mutableIntStateOf(0) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
 
-    BackHandler(enabled = drawerState.isOpen || currentScreen != "servers") {
+    BackHandler(enabled = drawerState.isOpen || currentScreen != "configs") {
         if (drawerState.isOpen) {
             scope.launch { drawerState.close() }
         } else {
-            currentScreen = "servers"
+            currentScreen = "configs"
         }
     }
 
@@ -167,9 +167,9 @@ private fun NetrayScreen() {
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
                     NavigationDrawerItem(
                         icon = { Icon(painterResource(R.drawable.ic_lucide_server), contentDescription = null, modifier = Modifier.size(20.dp)) },
-                        label = { Text("Servers") },
-                        selected = currentScreen == "servers",
-                        onClick = { currentScreen = "servers"; scope.launch { drawerState.close() } },
+                        label = { Text("Configs") },
+                        selected = currentScreen == "configs",
+                        onClick = { currentScreen = "configs"; scope.launch { drawerState.close() } },
                         modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                     )
                     NavigationDrawerItem(
@@ -206,7 +206,7 @@ private fun NetrayScreen() {
             when (currentScreen) {
                 "logs" -> LogsScreen(
                     onOpenDrawer = { scope.launch { drawerState.open() } },
-                    onBack = { currentScreen = "servers" }
+                    onBack = { currentScreen = "configs" }
                 )
                 "check_ip" -> CheckIpScreen(
                     onOpenDrawer = { scope.launch { drawerState.open() } },
