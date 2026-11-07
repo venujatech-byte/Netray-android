@@ -166,12 +166,12 @@ private fun NetrayScreen() {
 
     var pendingProfileId by rememberSaveable { mutableStateOf("") }
     val consent = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == Activity.RESULT_OK && pendingProfileId.isNotBlank()) startTunnel(context, pendingProfileId)
+        if (result.resultCode == Activity.RESULT_OK && pendingProfileId.isNotBlank()) startTunnel(context, pendingProfileId, selectedMode)
         pendingProfileId = ""
     }
     val requestVpnConsent: () -> Unit = {
         val prepare = VpnService.prepare(context)
-        if (prepare == null) startTunnel(context, selectedId)
+        if (prepare == null) startTunnel(context, selectedId, selectedMode)
         else { pendingProfileId = selectedId; consent.launch(prepare) }
     }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed ->
@@ -414,7 +414,7 @@ private fun NetrayScreen() {
                                 )
                                 FilledIconButton(
                                     onClick = {
-                                        if (vpn) startTunnel(context, null, disconnect = true)
+                                        if (vpn) startTunnel(context, null, mode = 0, disconnect = true)
                                         else if (android.os.Build.VERSION.SDK_INT >= 33 &&
                                             context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
                                             notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
@@ -719,9 +719,10 @@ private fun Tag(text: String, active: Boolean = false) {
     )
 }
 
-private fun startTunnel(context: android.content.Context, profileId: String?, disconnect: Boolean = false) {
+private fun startTunnel(context: android.content.Context, profileId: String?, mode: Int = 0, disconnect: Boolean = false) {
     val intent = Intent(context, NetrayVpnService::class.java).setAction(if (disconnect) NetrayVpnService.ACTION_DISCONNECT else NetrayVpnService.ACTION_CONNECT)
         .putExtra(NetrayVpnService.EXTRA_PROFILE, profileId)
+        .putExtra(NetrayVpnService.EXTRA_MODE, mode)
     if (disconnect) context.startService(intent) else ContextCompat.startForegroundService(context, intent)
 }
 

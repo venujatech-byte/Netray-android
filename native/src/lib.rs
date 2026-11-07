@@ -87,6 +87,39 @@ fn build_tun_config(outbounds: &str, tun_fd: i32) -> Result<String, &'static str
     serde_json::to_string(&config).map_err(|_| "Could not generate Xray config")
 }
 
+fn build_proxy_config(outbounds: &str, socks_port: u16, http_port: u16) -> Result<String, &'static str> {
+    let outbounds: serde_json::Value =
+        serde_json::from_str(outbounds).map_err(|_| "Invalid Xray outbounds")?;
+    let nodes = outbounds
+        .as_array()
+        .filter(|items| !items.is_empty())
+        .ok_or("Profile did not contain a usable outbound")?;
+    let tag = nodes[0]
+        .get("tag")
+        .and_then(serde_json::Value::as_str)
+        .ok_or("Xray outbound tag is missing")?;
+    let config = serde_json::json!({
+        "log": { "loglevel": "warning", "access": "none" },
+        "inbounds": [
+            {
+                "tag": "socks-in", "port": socks_port, "listen": "127.0.0.1", "protocol": "socks",
+                "settings": { "auth": "noauth", "udp": true },
+                "sniffing": { "enabled": true, "destOverride": ["http", "tls"] }
+            },
+            {
+                "tag": "http-in", "port": http_port, "listen": "127.0.0.1", "protocol": "http",
+                "settings": {},
+                "sniffing": { "enabled": true, "destOverride": ["http", "tls"] }
+            }
+        ],
+        "outbounds": nodes,
+        "routing": { "rules": [
+            { "type": "field", "inboundTag": ["socks-in", "http-in"], "outboundTag": tag }
+        ] }
+    });
+    serde_json::to_string(&config).map_err(|_| "Could not generate Xray proxy config")
+}
+
 fn result_json<T: Serialize>(result: Result<T, &'static str>) -> String {
     match result {
         Ok(value) => serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_owned()),
@@ -132,6 +165,27 @@ pub extern "system" fn Java_com_venujatech_netray_profiles_NativeBackend_buildTu
         .map_err(|_| "Invalid Xray outbounds")
         .and_then(|value| build_tun_config(value.to_str().unwrap_or_default(), tun_fd));
     // The success value is already JSON; wrapping it as a JSON string breaks Kotlin's object parser.
+    let output = match response {
+        Ok(config) => config,
+        Err(error) => serde_json::json!({"error": error}).to_string(),
+    };
+    env.new_string(output)
+        .expect("JNI string allocation failed")
+        .into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_venujatech_netray_profiles_NativeBackend_buildProxyConfig(
+    mut env: JNIEnv,
+    _class: JClass,
+    outbounds: JString,
+    socks_port: i32,
+    http_port: i32,
+) -> jstring {
+    let response = env
+        .get_string(&outbounds)
+        .map_err(|_| "Invalid Xray outbounds")
+        .and_then(|value| build_proxy_config(value.to_str().unwrap_or_default(), socks_port as u16, http_port as u16));
     let output = match response {
         Ok(config) => config,
         Err(error) => serde_json::json!({"error": error}).to_string(),

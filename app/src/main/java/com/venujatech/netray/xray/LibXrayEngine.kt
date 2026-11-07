@@ -1,7 +1,7 @@
 package com.venujatech.netray.xray
 
-import android.net.VpnService
 import android.net.Uri
+import android.net.VpnService
 import android.os.Build
 import libXray.DialerController
 import libXray.LibXray
@@ -9,9 +9,11 @@ import libXray.ProcessFinder
 import com.venujatech.netray.profiles.NativeBackend
 import org.json.JSONObject
 
+enum class TunnelMode { TUN, PROXY }
+
 class LibXrayEngine(private val service: VpnService) {
 
-    fun start(link: String, tunFd: Int) {
+    fun start(link: String, mode: TunnelMode, tunFd: Int = -1) {
         VpnDialerController.activeService = service
         ensureDialerRegistered()
         LibXray.registerProcessFinder(ProcessFinder { _, _, _, _, _ -> -1L }, Build.VERSION.SDK_INT.toLong())
@@ -37,7 +39,14 @@ class LibXrayEngine(private val service: VpnService) {
             if (!pin.isNullOrBlank()) tls.put("pinnedPeerCertSha256", pin)
             tls.put("allowInsecure", allowInsecure)
         }
-        val config = JSONObject(NativeBackend.buildTunConfig(outbounds.toString(), tunFd))
+        val config = when (mode) {
+            TunnelMode.TUN -> {
+                JSONObject(NativeBackend.buildTunConfig(outbounds.toString(), tunFd))
+            }
+            TunnelMode.PROXY -> {
+                JSONObject(NativeBackend.buildProxyConfig(outbounds.toString(), 10808, 10809))
+            }
+        }
         require(!config.has("error")) { config.optString("error", "Could not prepare Xray config") }
         invoke("runXray", JSONObject().put("xrayJson", config.toString()))
     }
