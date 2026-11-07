@@ -113,6 +113,15 @@ private fun NetrayScreen() {
     var importConfirmError by rememberSaveable { mutableStateOf("") }
     val settings = remember { context.getSharedPreferences("settings", 0) }
     var themeMode by rememberSaveable { mutableStateOf(settings.getString("theme_mode", "system") ?: "system") }
+    var allowInsecureTls by remember { mutableStateOf(settings.getBoolean("allow_insecure_tls", false)) }
+    var runAtStartup by remember { mutableStateOf(settings.getBoolean("run_at_startup", false)) }
+    var connectAtStartup by remember { mutableStateOf(settings.getBoolean("connect_at_startup", false)) }
+    var autoReconnect by remember { mutableStateOf(settings.getBoolean("auto_reconnect", true)) }
+    var notifyConnectionDrops by remember { mutableStateOf(settings.getBoolean("notify_connection_drops", true)) }
+    var autoCheckUpdates by remember { mutableStateOf(settings.getBoolean("auto_check_updates", true)) }
+    var instantImport by remember { mutableStateOf(settings.getBoolean("instant_import", false)) }
+    var socksPort by remember { mutableIntStateOf(settings.getInt("proxy_socks_port", 10808)) }
+    var httpPort by remember { mutableIntStateOf(settings.getInt("proxy_http_port", 10809)) }
     var uptime by remember { mutableLongStateOf(0) }
     var connectedPingMs by remember { mutableStateOf<Long?>(null) }
     var connectedPinging by remember { mutableStateOf(false) }
@@ -308,7 +317,53 @@ private fun NetrayScreen() {
                         selectedMode = mode
                         settings.edit().putInt("connection_mode", mode).apply()
                     },
+                    allowInsecureTls = allowInsecureTls,
+                    onAllowInsecureTlsChange = { checked ->
+                        allowInsecureTls = checked
+                        settings.edit().putBoolean("allow_insecure_tls", checked).apply()
+                    },
+                    runAtStartup = runAtStartup,
+                    onRunAtStartupChange = { checked ->
+                        runAtStartup = checked
+                        settings.edit().putBoolean("run_at_startup", checked).apply()
+                    },
+                    connectAtStartup = connectAtStartup,
+                    onConnectAtStartupChange = { checked ->
+                        connectAtStartup = checked
+                        settings.edit().putBoolean("connect_at_startup", checked).apply()
+                    },
+                    autoReconnect = autoReconnect,
+                    onAutoReconnectChange = { checked ->
+                        autoReconnect = checked
+                        settings.edit().putBoolean("auto_reconnect", checked).apply()
+                    },
+                    notifyConnectionDrops = notifyConnectionDrops,
+                    onNotifyConnectionDropsChange = { checked ->
+                        notifyConnectionDrops = checked
+                        settings.edit().putBoolean("notify_connection_drops", checked).apply()
+                    },
+                    autoCheckUpdates = autoCheckUpdates,
+                    onAutoCheckUpdatesChange = { checked ->
+                        autoCheckUpdates = checked
+                        settings.edit().putBoolean("auto_check_updates", checked).apply()
+                    },
+                    instantImport = instantImport,
+                    onInstantImportChange = { checked ->
+                        instantImport = checked
+                        settings.edit().putBoolean("instant_import", checked).apply()
+                    },
+                    socksPort = socksPort,
+                    onSocksPortChange = { port ->
+                        socksPort = port
+                        settings.edit().putInt("proxy_socks_port", port).apply()
+                    },
+                    httpPort = httpPort,
+                    onHttpPortChange = { port ->
+                        httpPort = port
+                        settings.edit().putInt("proxy_http_port", port).apply()
+                    },
                     vpnBusy = anyBusy,
+                    onCheckForUpdates = { currentScreen = "check_ip" },
                     onViewLogs = { currentScreen = "logs" }
                 )
                 "about" -> AboutScreen(
