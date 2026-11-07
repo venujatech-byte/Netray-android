@@ -484,7 +484,7 @@ private fun NetrayScreen() {
                                     modifier = Modifier.size(40.dp)
                                 ) {
                                     Icon(
-                                        painter = painterResource(R.drawable.ic_lucide_scan_square),
+                                        painter = painterResource(R.drawable.ic_lucide_clipboard_paste),
                                         contentDescription = "Import config from clipboard",
                                         tint = MaterialTheme.colorScheme.onBackground,
                                         modifier = Modifier.size(24.dp)
