@@ -6,7 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -70,10 +70,11 @@ fun SettingsScreen(
             modifier = Modifier
                 .padding(padding)
                 .padding(16.dp),
+            state = rememberLazyListState(),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Appearance
-            item {
+            item(key = "appearance") {
                 SettingsCard(title = "Appearance") {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         ThemeOption("System default", "system", themeMode, onThemeChange)
@@ -84,7 +85,7 @@ fun SettingsScreen(
             }
 
             // Accent Color
-            item {
+            item(key = "accent_color") {
                 SettingsCard(title = "Accent Color") {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(
@@ -106,7 +107,7 @@ fun SettingsScreen(
             }
 
             // Connection Mode
-            item {
+            item(key = "connection_mode") {
                 SettingsCard(title = "Connection Mode") {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
@@ -135,7 +136,7 @@ fun SettingsScreen(
             }
 
             // Proxy Ports
-            item {
+            item(key = "proxy_ports") {
                 if (selectedMode == 1) {
                     SettingsCard(title = "Proxy Ports") {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -178,9 +179,9 @@ fun SettingsScreen(
             }
 
             // System & Startup
-            item {
+            item(key = "system_startup") {
                 SettingsCard(title = "System & Startup") {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                         SwitchRow(
                             title = "Run at system startup",
                             subtitle = "Start Netray automatically on device boot.",
@@ -188,8 +189,6 @@ fun SettingsScreen(
                             enabled = !vpnBusy,
                             onCheckedChange = onRunAtStartupChange
                         )
-                        Spacer(Modifier.height(20.dp))
-
                         SwitchRow(
                             title = "Connect at startup",
                             subtitle = "Prompt to connect automatically on launch.",
@@ -197,8 +196,6 @@ fun SettingsScreen(
                             enabled = !vpnBusy,
                             onCheckedChange = onConnectAtStartupChange
                         )
-                        Spacer(Modifier.height(20.dp))
-
                         SwitchRow(
                             title = "Automatic restart after tunnel exit",
                             subtitle = "Restarts an exited tunnel. Network request failures keep it running.",
@@ -206,8 +203,6 @@ fun SettingsScreen(
                             enabled = !vpnBusy,
                             onCheckedChange = onAutoReconnectChange
                         )
-                        Spacer(Modifier.height(20.dp))
-
                         SwitchRow(
                             title = "Connection drop notifications",
                             subtitle = "Shows a notification when the tunnel drops or reconnects.",
@@ -215,8 +210,6 @@ fun SettingsScreen(
                             enabled = !vpnBusy,
                             onCheckedChange = onNotifyConnectionDropsChange
                         )
-                        Spacer(Modifier.height(20.dp))
-
                         SwitchRow(
                             title = "Allow insecure (TLS)",
                             subtitle = "Skips certificate validation. Turn off for verified TLS.",
@@ -224,8 +217,6 @@ fun SettingsScreen(
                             enabled = !vpnBusy,
                             onCheckedChange = onAllowInsecureTlsChange
                         )
-                        Spacer(Modifier.height(20.dp))
-
                         SwitchRow(
                             title = "Instant import",
                             subtitle = "Import clipboard configs immediately without confirmation.",
@@ -233,8 +224,6 @@ fun SettingsScreen(
                             enabled = !vpnBusy,
                             onCheckedChange = onInstantImportChange
                         )
-                        Spacer(Modifier.height(20.dp))
-
                         SwitchRow(
                             title = "Auto check for updates",
                             subtitle = "Checks for new releases at startup.",
@@ -247,7 +236,7 @@ fun SettingsScreen(
             }
 
             // App Updates
-            item {
+            item(key = "app_updates") {
                 SettingsCard(title = "App Updates") {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(
@@ -266,7 +255,7 @@ fun SettingsScreen(
             }
 
             // View Logs
-            item {
+            item(key = "view_logs") {
                 OutlinedButton(
                     onClick = onViewLogs,
                     modifier = Modifier.fillMaxWidth()

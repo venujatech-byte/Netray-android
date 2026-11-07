@@ -451,7 +451,7 @@ private fun NetrayScreen() {
                                         painter = painterResource(R.drawable.ic_lucide_plus),
                                         contentDescription = "Add VLESS profile",
                                         tint = MaterialTheme.colorScheme.onBackground,
-                                        modifier = Modifier.size(24.dp)
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
                                 IconButton(
@@ -463,7 +463,7 @@ private fun NetrayScreen() {
                                         painter = painterResource(R.drawable.ic_lucide_scan_line),
                                         contentDescription = "Scan QR code to import",
                                         tint = MaterialTheme.colorScheme.onBackground,
-                                        modifier = Modifier.size(24.dp)
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
                                 IconButton(
@@ -486,7 +486,7 @@ private fun NetrayScreen() {
                                         painter = painterResource(R.drawable.ic_lucide_clipboard_paste),
                                         contentDescription = "Import config from clipboard",
                                         tint = MaterialTheme.colorScheme.onBackground,
-                                        modifier = Modifier.size(24.dp)
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
                                 Box {
@@ -498,7 +498,7 @@ private fun NetrayScreen() {
                                             painter = painterResource(R.drawable.ic_lucide_more_vertical),
                                             contentDescription = "More options",
                                             tint = MaterialTheme.colorScheme.onBackground,
-                                            modifier = Modifier.size(22.dp)
+                                            modifier = Modifier.size(18.dp)
                                         )
                                     }
                                     DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
@@ -1068,6 +1068,7 @@ private fun ShareDialog(
         }
     }
     val dialogSurface = if (darkTheme) Color(0xFF1B202A) else Color(0xFFF7F9FF)
+    val dialogCard = if (darkTheme) Color(0xFF252A34) else Color(0xFFE1E5ED)
     val dialogText = if (darkTheme) Color(0xFFE0E2E8) else Color(0xFF181C20)
     val dialogTextVariant = if (darkTheme) Color(0xFFC2C7CF) else Color(0xFF42474E)
 
@@ -1078,7 +1079,7 @@ private fun ShareDialog(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(200.dp)
+                    .height(250.dp)
                     .background(Color.White, RoundedCornerShape(8.dp))
                     .padding(12.dp)
                     .align(Alignment.CenterHorizontally),
@@ -1107,7 +1108,7 @@ private fun ShareDialog(
                 Icon(
                     painter = painterResource(R.drawable.ic_lucide_info),
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = dialogTextVariant,
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(Modifier.width(8.dp))
@@ -1121,19 +1122,19 @@ private fun ShareDialog(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant
+                color = dialogCard
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.ic_lucide_link),
                         contentDescription = null,
                         tint = dialogTextVariant,
-                        modifier = Modifier.size(30.dp)
+                        modifier = Modifier.size(26.dp)
                     )
-                    Spacer(Modifier.width(16.dp))
+                    Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
                             text = "Link",
@@ -1150,13 +1151,13 @@ private fun ShareDialog(
                     }
                     IconButton(
                         onClick = onCopy,
-                        modifier = Modifier.size(44.dp)
+                        modifier = Modifier.size(40.dp)
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.ic_lucide_copy),
                             contentDescription = "Copy link",
                             tint = if (shareCopied) Green else dialogTextVariant,
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                 }
