@@ -116,10 +116,11 @@
     <string name="update_cancel_download">Cancel download</string>
     <string name="update_download_progress">Downloading %1$d%% · %2$s / %3$s MB</string>
     <string name="update_install_permission_title">Allow app installs</string>
-    <string name="update_install_permission_message">Allow Netray to install the downloaded update, then return here.</string>
+    <string name="update_install_permission_message">Android requires you to allow Netray to install APKs. Enable “Allow from this source” in Settings, then return here. Android will ask you to confirm the installation.</string>
+    <string name="update_install_permission_settings">Open settings</string>
     <string name="update_install_permission_denied">Install permission was not granted. The verified APK is kept for retry.</string>
     <string name="update_install_failed">Installation failed: %1$s</string>
-    <string name="update_install_retry">Retry install</string>
+    <string name="update_install_retry">Install update</string>
     <string name="update_install_pending">Tap to continue installing Netray</string>
     <string name="update_available_notification">Netray %1$s is available</string>
     <string name="update_whats_new">What’s new in v%1$s</string>

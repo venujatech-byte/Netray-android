@@ -1,10 +1,13 @@
 package com.venujatech.netray.updates
 
-import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -30,6 +32,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -38,13 +44,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.venujatech.netray.R
-import com.venujatech.netray.profiles.Profile
-import java.text.DateFormat
-import java.text.SimpleDateFormat
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,6 +61,21 @@ fun UpdateScreen(
     onRetryInstall: (UpdateDownloadState.Ready) -> Unit
 ) {
     val context = LocalContext.current
+    var pendingInstall by remember { mutableStateOf<UpdateDownloadState.Ready?>(null) }
+    var showInstallPermissionDialog by remember { mutableStateOf(false) }
+    val installSettings = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        val ready = pendingInstall
+        pendingInstall = null
+        if (ready != null && context.packageManager.canRequestPackageInstalls()) onRetryInstall(ready)
+        else if (ready != null) Toast.makeText(context, R.string.update_install_permission_denied, Toast.LENGTH_LONG).show()
+    }
+    val requestInstall: (UpdateDownloadState.Ready) -> Unit = { ready ->
+        if (context.packageManager.canRequestPackageInstalls()) onRetryInstall(ready)
+        else {
+            pendingInstall = ready
+            showInstallPermissionDialog = true
+        }
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -112,18 +128,15 @@ fun UpdateScreen(
                     LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
                     OutlinedButton(onClick = onCancelDownload, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.update_cancel_download)) }
                 }
-                is UpdateDownloadState.Ready -> OutlinedButton(onClick = { onRetryInstall(download) }, modifier = Modifier.fillMaxWidth()) {
+                is UpdateDownloadState.Ready -> OutlinedButton(onClick = { requestInstall(download) }, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.update_install_retry))
                 }
                 is UpdateDownloadState.Failed -> {
                     Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(download.message, color = MaterialTheme.colorScheme.onErrorContainer)
-                            download.apk?.takeIf { it.exists() }?.let {
-                                OutlinedButton(onClick = {
-                                    val release = download.release
-                                    if (release != null) onRetryInstall(UpdateDownloadState.Ready(it, release))
-                                }) { Text(stringResource(R.string.update_install_retry)) }
+                            download.release?.let { release ->
+                                OutlinedButton(onClick = { onUpdate(release) }) { Text(stringResource(R.string.action_retry)) }
                             }
                         }
                     }
@@ -132,6 +145,27 @@ fun UpdateScreen(
             }
         }
     }
+    if (showInstallPermissionDialog) AlertDialog(
+        onDismissRequest = { showInstallPermissionDialog = false; pendingInstall = null },
+        title = { Text(stringResource(R.string.update_install_permission_title)) },
+        text = { Text(stringResource(R.string.update_install_permission_message)) },
+        confirmButton = {
+            TextButton(onClick = {
+                showInstallPermissionDialog = false
+                runCatching {
+                    installSettings.launch(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}")))
+                }.onFailure {
+                    pendingInstall = null
+                    Toast.makeText(context, R.string.update_install_permission_denied, Toast.LENGTH_LONG).show()
+                }
+            }) { Text(stringResource(R.string.update_install_permission_settings)) }
+        },
+        dismissButton = {
+            TextButton(onClick = { showInstallPermissionDialog = false; pendingInstall = null }) {
+                Text(stringResource(R.string.action_cancel))
+            }
+        }
+    )
 }
 
 @Composable

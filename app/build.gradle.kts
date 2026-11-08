@@ -15,10 +15,18 @@ android {
         versionCode = providers.gradleProperty("versionCode").orElse("1").get().toInt()
         versionName = providers.gradleProperty("versionName").orElse("1.0.0").get()
         buildConfigField("String", "GITHUB_REPO", "\"venujatech-byte/Netray-android\"")
-        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
     buildFeatures { compose = true; buildConfig = true }
+    androidResources { localeFilters += listOf("en") }
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = true
+        }
+    }
     val keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
     val storePasswordEnv = System.getenv("ANDROID_KEYSTORE_PASSWORD")
     val keyAliasEnv = System.getenv("ANDROID_KEY_ALIAS")
@@ -36,7 +44,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            ndk { debugSymbolLevel = "FULL" }
+            ndk { debugSymbolLevel = "NONE" }
             if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // versionCode is set via CI -PversionCode property
@@ -54,8 +62,28 @@ android {
     }
     packaging {
         jniLibs {
-            useLegacyPackaging = false
+            useLegacyPackaging = true
             excludes += setOf("**/x86/**", "**/x86_64/**")
+        }
+        resources {
+            excludes += setOf("DebugProbesKt.bin", "kotlin-tooling-metadata.json", "META-INF/*.version")
+        }
+    }
+}
+
+androidComponents {
+    onVariants { variant ->
+        if (variant.buildType == "release") {
+            variant.outputs.forEach { output ->
+                val offset = when (output.filters.find {
+                    it.filterType == com.android.build.api.variant.FilterConfiguration.FilterType.ABI
+                }?.identifier) {
+                    "arm64-v8a" -> 1
+                    "armeabi-v7a" -> 2
+                    else -> 0
+                }
+                output.versionCode.set(output.versionCode.get() + offset)
+            }
         }
     }
 }

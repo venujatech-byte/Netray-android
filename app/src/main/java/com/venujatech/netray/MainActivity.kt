@@ -14,6 +14,9 @@ import android.webkit.WebView
 import android.widget.Toast
 import com.venujatech.netray.updates.UpdateCheckResult
 import com.venujatech.netray.updates.GitHubReleaseRepository
+import com.venujatech.netray.updates.UpdateDownloadService
+import com.venujatech.netray.updates.UpdateDownloadState
+import com.venujatech.netray.updates.UpdateScreen
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -56,6 +59,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -194,6 +198,18 @@ private fun NetrayScreen() {
     var proxyHttpPort by remember { mutableIntStateOf(ProxyConfig.DEFAULT_HTTP_PORT) }
 
     var currentScreen by rememberSaveable { mutableStateOf("configs") }
+    var updateResult by remember { mutableStateOf<UpdateCheckResult?>(null) }
+    var checkingUpdates by remember { mutableStateOf(false) }
+    val updateDownloadState by UpdateDownloadService.state.collectAsStateWithLifecycle()
+    val checkForUpdates: () -> Unit = {
+        checkingUpdates = true
+        scope.launch {
+            updateResult = withContext(Dispatchers.IO) {
+                GitHubReleaseRepository(context).check(BuildConfig.VERSION_NAME, true)
+            }
+            checkingUpdates = false
+        }
+    }
     var selectedMode by rememberSaveable { mutableIntStateOf(settings.getInt("connection_mode", 0)) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val importFocusRequester = remember { FocusRequester() }
@@ -251,7 +267,7 @@ private fun NetrayScreen() {
                 withContext(Dispatchers.IO) { store.save(next) }
                 profiles.clear()
                 profiles.addAll(next)
-                selectedId = candidate.id
+                if (selectedId.isBlank()) selectedId = candidate.id
                 replacingId?.let { pingResults.remove(it); pinging.remove(it) }
                 editTarget = null
                 addProtocolKey = null
@@ -361,7 +377,7 @@ private fun NetrayScreen() {
                         val next = profiles + additions
                         withContext(Dispatchers.IO) { store.save(next) }
                         profiles.addAll(additions)
-                        selectedId = additions.first().id
+                        if (selectedId.isBlank()) selectedId = additions.first().id
                     } catch (cancelled: kotlinx.coroutines.CancellationException) {
                         throw cancelled
                     } catch (_: Exception) {
@@ -622,22 +638,33 @@ private fun NetrayScreen() {
                     },
                     vpnBusy = anyBusy,
                     connected = connected,
-                    onCheckForUpdates = { scope.launch {
-                        val repository = GitHubReleaseRepository(context)
-                        val result = withContext(Dispatchers.IO) { repository.check(BuildConfig.VERSION_NAME, false) }
-                        when (result) {
-                            is UpdateCheckResult.Available -> {
-                                Toast.makeText(context, "Update available: ${result.release.version}", Toast.LENGTH_LONG).show()
-                            }
-                            is UpdateCheckResult.Current -> {
-                                Toast.makeText(context, "You're up to date (v${result.version})", Toast.LENGTH_LONG).show()
-                            }
-                            is UpdateCheckResult.Failed -> {
-                                Toast.makeText(context, "Failed to check updates: ${result.message}", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    }},
+                    onCheckForUpdates = {
+                        currentScreen = "updates"
+                        checkForUpdates()
+                    },
                     onViewLogs = { currentScreen = "logs" }
+                )
+                "updates" -> UpdateScreen(
+                    installedVersion = BuildConfig.VERSION_NAME,
+                    result = updateResult,
+                    checking = checkingUpdates,
+                    downloadState = updateDownloadState,
+                    onBack = { currentScreen = "settings" },
+                    onCheck = checkForUpdates,
+                    onUpdate = { release -> UpdateDownloadService.start(context, release) },
+                    onCancelDownload = { UpdateDownloadService.cancel(context) },
+                    onRetryInstall = { ready ->
+                        runCatching {
+                            val uri = FileProvider.getUriForFile(context, "${context.packageName}.updates", ready.apk)
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW)
+                                    .setDataAndType(uri, "application/vnd.android.package-archive")
+                                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            )
+                        }.onFailure {
+                            Toast.makeText(context, context.getString(R.string.update_install_failed, it.message ?: "Unknown error"), Toast.LENGTH_LONG).show()
+                        }
+                    }
                 )
                 "about" -> AboutScreen(
                     onOpenDrawer = { scope.launch { drawerState.open() } },

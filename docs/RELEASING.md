@@ -43,4 +43,4 @@ mark that GitHub Release as a **draft** or **prerelease**; existing installation
 continue to run their installed version. Preserve the signing key and previous release
 assets for recovery. Never delete the tag or the signing key.
 
-txt. The signed AAB, R8 `mapping.txt`, and any generated native symbols are retained as private Actions artifacts for 90 days. The app's explicit R8 keep rule preserves native JNI entry point names. The libXray AAR contributes its upstream consumer keep rules for the reflective Go bridge; do not remove them without testing the pinned integration.
+The signed AAB and R8 `mapping.txt` are retained as private Actions artifacts for 90 days. Native debug symbols are disabled for release APKs to reduce artifact size. The app's explicit R8 keep rule preserves native JNI entry point names. The libXray AAR contributes its upstream consumer keep rules for the reflective Go bridge; do not remove them without testing the pinned integration.

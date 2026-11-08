@@ -99,22 +99,24 @@ jobs:
         env:
           VERSION: ${{ needs.version.outputs.version }}
           VERSION_CODE: ${{ needs.version.outputs.version_code }}
-        run: ./gradlew :app:lintDebug :app:assembleRelease -PversionName="$VERSION" -PversionCode="$VERSION_CODE" -PreleaseAbis=arm64-v8a,armeabi-v7a
+        run: ./gradlew :app:lintDebug :app:assembleRelease -PversionName="$VERSION" -PversionCode="$VERSION_CODE"
       - name: Release size guard
-        run: bash scripts/check-apk-size.sh
+        run: |
+          bash scripts/verify-release-apks.sh
+          bash scripts/check-apk-size.sh app/build/outputs/apk/release/app-universal-release-unsigned.apk
       - name: Prepare unsigned PR artifact
         if: github.event_name == 'pull_request'
-        run: cp app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/Netray-Android-${{ needs.version.outputs.version }}-unsigned.apk"
+        run: cp app/build/outputs/apk/release/app-universal-release-unsigned.apk "$RUNNER_TEMP/Netray-Android-${{ needs.version.outputs.version }}-universal-unsigned.apk"
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'pull_request'
         with:
           name: netray-android-pr-${{ github.event.pull_request.number }}
-          path: ${{ runner.temp }}/Netray-Android-*-unsigned.apk
+          path: ${{ runner.temp }}/Netray-Android-*-universal-unsigned.apk
           retention-days: 14
       - name: Report PR artifact
         if: github.event_name == 'pull_request'
         run: |
-          apk="$RUNNER_TEMP/Netray-Android-${{ needs.version.outputs.version }}-unsigned.apk"
+          apk="$RUNNER_TEMP/Netray-Android-${{ needs.version.outputs.version }}-universal-unsigned.apk"
           printf '### Android PR build\n\nVersion: `%s`\n\nRelease-mode APK: `%s` bytes (unsigned, not published).\n' \
             '${{ needs.version.outputs.version }}' "$(stat -c %s "$apk")" >> "$GITHUB_STEP_SUMMARY"
 
@@ -179,29 +181,28 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
           VERSION_CODE: ${{ needs.version.outputs.version_code }}
         run: |
-          ./gradlew :app:assembleRelease -PversionName="$VERSION" -PversionCode="$VERSION_CODE" -PreleaseAbis=arm64-v8a,armeabi-v7a
+          ./gradlew :app:assembleRelease -PversionName="$VERSION" -PversionCode="$VERSION_CODE"
           mkdir -p dist
-          cp app/build/outputs/apk/release/app-release-unsigned.apk "dist/Netray-Android-v$VERSION-universal-unsigned.apk"
+          bash scripts/verify-release-apks.sh
+          cp app/build/outputs/apk/release/app-universal-release-unsigned.apk "dist/Netray-Android-v$VERSION-universal-unsigned.apk"
           echo "WARNING: Android release skipped because signing secrets are missing." >> "$GITHUB_STEP_SUMMARY"
       - name: Build signed per-ABI and universal APKs and AAB
+        if: steps.signing.outputs.available == 'true'
         env:
           VERSION: ${{ needs.version.outputs.version }}
           VERSION_CODE: ${{ needs.version.outputs.version_code }}
         run: |
           mkdir -p dist/private
           base_code="$VERSION_CODE"
-          arm_code=$((base_code + 1))
-          v7_code=$((base_code + 2))
-          ./gradlew :app:assembleRelease -PversionName="$VERSION" -PversionCode="$arm_code" -PreleaseAbis=arm64-v8a
-          cp app/build/outputs/apk/release/app-release.apk "dist/Netray-Android-v$VERSION-arm64-v8a.apk"
-          cp app/build/outputs/mapping/release/mapping.txt "dist/private/mapping-arm64.txt"
-          ./gradlew :app:assembleRelease -PversionName="$VERSION" -PversionCode="$v7_code" -PreleaseAbis=armeabi-v7a
-          cp app/build/outputs/apk/release/app-release.apk "dist/Netray-Android-v$VERSION-armeabi-v7a.apk"
-          cp app/build/outputs/mapping/release/mapping.txt "dist/private/mapping-armeabi-v7a.txt"
-          ./gradlew :app:assembleRelease -PversionName="$VERSION" -PversionCode="$base_code" -PreleaseAbis=arm64-v8a,armeabi-v7a
-          cp app/build/outputs/apk/release/app-release.apk "dist/Netray-Android-v$VERSION-universal.apk"
-          cp app/build/outputs/mapping/release/mapping.txt "dist/private/mapping-universal.txt"
-          ./gradlew :app:bundleRelease -PversionName="$VERSION" -PversionCode="$base_code" -PreleaseAbis=arm64-v8a,armeabi-v7a
+          ./gradlew :app:assembleRelease -PversionName="$VERSION" -PversionCode="$base_code"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner" bash scripts/verify-release-apks.sh app/build/outputs/apk/release --require-signed
+          for abi in arm64-v8a armeabi-v7a universal; do
+            apk="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name "app-$abi-release.apk" -print -quit)"
+            test -n "$apk"
+            cp "$apk" "dist/Netray-Android-v$VERSION-$abi.apk"
+          done
+          cp app/build/outputs/mapping/release/mapping.txt dist/private/mapping.txt
+          ./gradlew :app:bundleRelease -PversionName="$VERSION" -PversionCode="$base_code"
           cp app/build/outputs/bundle/release/app-release.aab "dist/private/Netray-Android-v$VERSION.aab"
           for apk in dist/*.apk; do
             "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -v 4 "$apk"
@@ -226,10 +227,19 @@ jobs:
             echo "Release tag or release $TAG already exists; refusing to create a duplicate." >&2
             exit 1
           fi
-          notes="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" -f tag_name="$TAG" -f target_commitish="$GITHUB_SHA" --jq .body || true)"
+          previous_android_tag="$(git tag --list 'android-v[0-9]*' --sort=-version:refname | head -n 1)"
+          if [[ -n "$previous_android_tag" ]]; then
+            notes="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" -f tag_name="$TAG" -f previous_tag_name="$previous_android_tag" -f target_commitish="$GITHUB_SHA" --jq .body || true)"
+            changelog="$(git log --format='- %s (%h)' --reverse "$previous_android_tag..$GITHUB_SHA")"
+          else
+            notes="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" -f tag_name="$TAG" -f target_commitish="$GITHUB_SHA" --jq .body || true)"
+            changelog="$(git log --format='- %s (%h)' --reverse "$GITHUB_SHA" -- app/ native/ scripts/ .github/workflows/android-release.yml)"
+          fi
           if [[ -z "${notes//[[:space:]]/}" ]]; then
             notes="$(printf 'Netray Android v%s\n\nBuilt from commit %s.\n' "$VERSION" "$GITHUB_SHA")"
           fi
+          if [[ -z "${changelog//[[:space:]]/}" ]]; then changelog='- Initial Android release.'; fi
+          notes="$(printf '%s\n\n### Android commit changelog\n\n%s\n' "$notes" "$changelog")"
           git tag "$TAG" "$GITHUB_SHA"
           git push origin "$TAG"
           gh release create "$TAG" dist/*.apk dist/SHA256SUMS.txt --target "$GITHUB_SHA" --title "Netray Android v$VERSION" --notes "$notes"
