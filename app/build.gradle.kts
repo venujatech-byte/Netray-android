@@ -14,7 +14,7 @@ android {
         targetSdk = 35
         versionCode = providers.gradleProperty("versionCode").orElse("1").get().toInt()
         versionName = providers.gradleProperty("versionName").orElse("1.0.0").get()
-        buildConfigField("String", "GITHUB_REPO", "\"venujatech-byte/Netray\"")
+        buildConfigField("String", "GITHUB_REPO", "\"venujatech-byte/Netray-android\"")
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
