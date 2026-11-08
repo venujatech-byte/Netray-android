@@ -8,6 +8,9 @@ changelog:
       labels:
         - "bug"
         - "fix"
+    - title: "Performance"
+      labels:
+        - "performance"
     - title: "Other Changes"
       labels:
         - "*"

@@ -14,12 +14,8 @@ android {
         targetSdk = 35
         versionCode = providers.gradleProperty("versionCode").orElse("1").get().toInt()
         versionName = providers.gradleProperty("versionName").orElse("1.0.0").get()
-        val selectedAbis = providers.gradleProperty("releaseAbis").orNull
-            ?.split(",")?.map(String::trim)?.filter(String::isNotEmpty)
-            ?: listOf("arm64-v8a", "armeabi-v7a")
-        ndk { abiFilters += selectedAbis }
         buildConfigField("String", "GITHUB_REPO", "\"venujatech-byte/Netray\"")
-        buildConfigField("boolean", "SELF_UPDATE_ENABLED", providers.gradleProperty("selfUpdateEnabled").orElse("true").get())
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
     buildFeatures { compose = true; buildConfig = true }
@@ -43,6 +39,13 @@ android {
             ndk { debugSymbolLevel = "FULL" }
             if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // versionCode is set via CI -PversionCode property
+            // The formula: (MAJOR*1000000 + MINOR*1000 + PATCH) * 10 + abiOffset
+            // abiOffset: universal=0, arm64-v8a=1, armeabi-v7a=2, x86_64=3, x86=4
+        }
+        debug {
+            isDebuggable = true
+            // Debug builds keep the debug key; no -PversionCode override needed
         }
     }
     compileOptions {

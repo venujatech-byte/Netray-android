@@ -1,3 +1,10 @@
+
+## ⚠️ Keystore Warning
+
+**Never lose your signing keystore.** Every release **must be signed with the SAME key**.  
+Losing it means existing users **cannot update** without uninstalling the app.  
+Always keep a secure offline backup of the keystore file and all passwords.
+
 # Android releases
 
 Android releases use `android-vMAJOR.MINOR.PATCH` because the Linux/Windows workflows already publish `v1.0.x` tags/releases in the same GitHub repository. Android updater selection is based on Android APK assets and recognizes the `android-` prefix. The first Android release with no Android tag is `1.0.0`.
@@ -27,10 +34,13 @@ Add the base64 output and the password values as repository Actions secrets:
 
 The workflow decodes the keystore to a temporary runner file, verifies signed APK certificates, then deletes the file. If any secret is absent, CI still builds and tests unsigned release artifacts but deliberately skips tag/release publication. Never commit the keystore or passwords. Back up the keystore: losing it prevents existing installations signed by that key from accepting updates.
 
+
 ## Rollback
 
-Do not move an existing release tag. Publish a higher patch release with the fix and explain the issue in its release notes. If a release must be hidden immediately, mark that GitHub Release as a draft or prerelease; existing installations will continue to run their installed version. Preserve the signing key and previous release assets for recovery.
+Do **not** move an existing release tag. Publish a higher patch release with the fix
+and explain the issue in its release notes. If a release must be hidden immediately,
+mark that GitHub Release as a **draft** or **prerelease**; existing installations will
+continue to run their installed version. Preserve the signing key and previous release
+assets for recovery. Never delete the tag or the signing key.
 
-## Release artifacts and shrinker rules
-
-Public release assets are signed per-ABI APKs, a universal ARM fallback APK, and SHA256SUMS.txt. The signed AAB, R8 `mapping.txt`, and any generated native symbols are retained as private Actions artifacts for 90 days. The app's explicit R8 keep rule preserves native JNI entry point names. The libXray AAR contributes its upstream consumer keep rules for the reflective Go bridge; do not remove them without testing the pinned integration.
+txt. The signed AAB, R8 `mapping.txt`, and any generated native symbols are retained as private Actions artifacts for 90 days. The app's explicit R8 keep rule preserves native JNI entry point names. The libXray AAR contributes its upstream consumer keep rules for the reflective Go bridge; do not remove them without testing the pinned integration.

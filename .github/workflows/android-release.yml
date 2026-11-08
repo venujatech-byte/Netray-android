@@ -1,6 +1,8 @@
 name: Android release
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
     paths:
@@ -11,24 +13,8 @@ on:
       - "scripts/build-libxray.sh"
       - "scripts/patch-xray-tls.py"
       - "scripts/test-xray-tls.go"
-      - "build.gradle.kts"
-      - "settings.gradle.kts"
-      - "gradle.properties"
-      - ".github/workflows/android-release.yml"
-      - ".github/release.yml"
-      - "docs/SECURITY.md"
-      - "docs/RELEASING.md"
-  push:
-    branches: [main]
-    paths:
-      - "app/**"
-      - "native/**"
-      - "gradle/**"
-      - "scripts/build-rust-android.sh"
-      - "scripts/build-libxray.sh"
-      - "scripts/patch-xray-tls.py"
-      - "scripts/test-xray-tls.go"
       - "scripts/compute-version.sh"
+      - "scripts/test-compute-version.sh"
       - "build.gradle.kts"
       - "settings.gradle.kts"
       - "gradle.properties"
@@ -70,9 +56,12 @@ jobs:
           printf '%s\n' "$output" >> "$GITHUB_OUTPUT"
           printf '%s\n' "$output"
 
-  build-test:
+  verify:
     needs: version
     runs-on: ubuntu-24.04
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -115,24 +104,22 @@ jobs:
       - name: Release size guard
         run: bash scripts/check-apk-size.sh
       - name: Prepare unsigned PR artifact
-        if: github.event_name == 'pull_request'
         run: cp app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/Netray-Android-${{ needs.version.outputs.version }}-unsigned.apk"
       - uses: actions/upload-artifact@v4
-        if: github.event_name == 'pull_request'
+        if: always()
         with:
           name: netray-android-pr-${{ github.event.pull_request.number }}
           path: ${{ runner.temp }}/Netray-Android-*-unsigned.apk
           retention-days: 14
       - name: Report PR artifact
-        if: github.event_name == 'pull_request'
         run: |
           apk="$RUNNER_TEMP/Netray-Android-${{ needs.version.outputs.version }}-unsigned.apk"
           printf '### Android PR build\n\nVersion: `%s`\n\nRelease-mode APK: `%s` bytes (unsigned, not published).\n' \
             '${{ needs.version.outputs.version }}' "$(stat -c %s "$apk")" >> "$GITHUB_STEP_SUMMARY"
 
-  publish:
+  release:
+    needs: [version, verify]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [version, build-test]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -196,7 +183,6 @@ jobs:
           cp app/build/outputs/apk/release/app-release-unsigned.apk "dist/Netray-Android-v$VERSION-universal-unsigned.apk"
           echo "WARNING: Android release skipped because signing secrets are missing." >> "$GITHUB_STEP_SUMMARY"
       - name: Build signed per-ABI and universal APKs and AAB
-        if: steps.signing.outputs.available == 'true'
         env:
           VERSION: ${{ needs.version.outputs.version }}
           VERSION_CODE: ${{ needs.version.outputs.version_code }}
