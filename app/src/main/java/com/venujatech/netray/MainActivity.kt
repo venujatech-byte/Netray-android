@@ -12,6 +12,8 @@ import android.os.Bundle
 import android.provider.Settings
 import android.webkit.WebView
 import android.widget.Toast
+import com.venujatech.netray.updates.UpdateCheckResult
+import com.venujatech.netray.updates.GitHubReleaseRepository
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -619,7 +621,21 @@ private fun NetrayScreen() {
                         settings.edit().putString("accent_color", checked).apply()
                     },
                     vpnBusy = anyBusy,
-                    onCheckForUpdates = { currentScreen = "check_ip" },
+                    onCheckForUpdates = { scope.launch {
+                        val repository = GitHubReleaseRepository(context)
+                        val result = withContext(Dispatchers.IO) { repository.check(BuildConfig.VERSION_NAME, false) }
+                        when (result) {
+                            is UpdateCheckResult.Available -> {
+                                Toast.makeText(context, "Update available: ${result.release.version}", Toast.LENGTH_LONG).show()
+                            }
+                            is UpdateCheckResult.Current -> {
+                                Toast.makeText(context, "You're up to date (v${result.version})", Toast.LENGTH_LONG).show()
+                            }
+                            is UpdateCheckResult.Failed -> {
+                                Toast.makeText(context, "Failed to check updates: ${result.message}", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }},
                     onViewLogs = { currentScreen = "logs" }
                 )
                 "about" -> AboutScreen(
