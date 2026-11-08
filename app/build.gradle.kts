@@ -4,6 +4,8 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+val buildAppBundle = providers.gradleProperty("buildAppBundle").map(String::toBoolean).getOrElse(false)
+
 android {
     namespace = "com.venujatech.netray"
     compileSdk = 36
@@ -21,7 +23,7 @@ android {
     androidResources { localeFilters += listOf("en") }
     splits {
         abi {
-            isEnable = true
+            isEnable = !buildAppBundle
             reset()
             include("arm64-v8a", "armeabi-v7a")
             isUniversalApk = true

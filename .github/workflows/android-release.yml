@@ -202,7 +202,7 @@ jobs:
             cp "$apk" "dist/Netray-Android-v$VERSION-$abi.apk"
           done
           cp app/build/outputs/mapping/release/mapping.txt dist/private/mapping.txt
-          ./gradlew :app:bundleRelease -PversionName="$VERSION" -PversionCode="$base_code"
+          ./gradlew :app:bundleRelease -PversionName="$VERSION" -PversionCode="$base_code" -PbuildAppBundle=true
           cp app/build/outputs/bundle/release/app-release.aab "dist/private/Netray-Android-v$VERSION.aab"
           for apk in dist/*.apk; do
             "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -v 4 "$apk"
