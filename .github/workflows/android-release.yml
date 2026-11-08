@@ -70,7 +70,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
       - name: Install Android SDK/NDK
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018"
       - uses: actions/setup-go@v5
@@ -133,7 +133,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
       - name: Install Android SDK/NDK
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018"
       - uses: actions/setup-go@v5
