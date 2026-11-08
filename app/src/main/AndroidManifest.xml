@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -23,11 +24,5 @@
         <service android:name=".proxy.NetrayProxyService" android:exported="false" android:foregroundServiceType="dataSync">
         </service>
         <service android:name=".updates.UpdateDownloadService" android:exported="false" android:foregroundServiceType="dataSync" />
-        <receiver android:name=".updates.UpdateInstallStatusReceiver" android:exported="false" />
-        <receiver android:name=".updates.PackageReplacedReceiver" android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-            </intent-filter>
-        </receiver>
     </application>
 </manifest>

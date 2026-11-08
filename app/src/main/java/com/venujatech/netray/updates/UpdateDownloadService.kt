@@ -196,12 +196,9 @@ class UpdateDownloadService : Service() {
             packageManager.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_SIGNING_CERTIFICATES)
         } ?: throw IOException(getString(R.string.update_error_invalid_apk))
         require(archive.packageName == packageName) { getString(R.string.update_error_package) }
-        val installed = if (Build.VERSION.SDK_INT >= 28) {
-            packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong()))
-        } else {
-            @Suppress("DEPRECATION")
-            packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
-        }
+        // minSdk is 28, so GET_SIGNING_CERTIFICATES with the int-flag overload is always available
+        @Suppress("DEPRECATION")
+        val installed = packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
         val archiveVersion = versionCode(archive)
         val installedVersion = versionCode(installed)
         require(archiveVersion > installedVersion) { getString(R.string.update_error_old_version) }
