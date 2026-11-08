@@ -11,3 +11,4 @@ native/target/
 app/src/main/assets/licenses/xray-source.tar.gz
 .idea/
 .kotlin/
+keystore.b64
