@@ -15,6 +15,18 @@ git -C "$tmp/Xray-core" checkout --quiet "$core_commit"
 python3 "$root/scripts/patch-xray-tls.py" "$tmp/Xray-core"
 cp "$root/scripts/test-xray-tls.go" "$tmp/Xray-core/transport/internet/tls/netray_insecure_test.go"
 (cd "$tmp/Xray-core" && go test ./transport/internet/tls -run '^TestNetrayAllowInsecure$' -count=1)
+# shortcut: Netray has no geosite/geoip routing; restore this check if geo rules are added.
+python3 - "$tmp/libXray/build/app/build.py" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+source = path.read_text()
+call = "        self.download_geo()\n"
+if source.count(call) != 1:
+    raise SystemExit("Pinned libXray build hook changed; review geodata handling")
+path.write_text(source.replace(call, ""))
+PY
 python3 "$tmp/libXray/build/main.py" android local
 mkdir -p "$root/app/libs"
 install -m 0644 "$tmp/libXray/libXray.aar" "$root/app/libs/libXray.aar"
