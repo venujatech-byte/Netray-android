@@ -59,7 +59,6 @@ jobs:
   verify:
     needs: version
     runs-on: ubuntu-24.04
-    if: github.event_name == 'pull_request'
     permissions:
       contents: read
     steps:
@@ -104,14 +103,16 @@ jobs:
       - name: Release size guard
         run: bash scripts/check-apk-size.sh
       - name: Prepare unsigned PR artifact
+        if: github.event_name == 'pull_request'
         run: cp app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/Netray-Android-${{ needs.version.outputs.version }}-unsigned.apk"
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: github.event_name == 'pull_request'
         with:
           name: netray-android-pr-${{ github.event.pull_request.number }}
           path: ${{ runner.temp }}/Netray-Android-*-unsigned.apk
           retention-days: 14
       - name: Report PR artifact
+        if: github.event_name == 'pull_request'
         run: |
           apk="$RUNNER_TEMP/Netray-Android-${{ needs.version.outputs.version }}-unsigned.apk"
           printf '### Android PR build\n\nVersion: `%s`\n\nRelease-mode APK: `%s` bytes (unsigned, not published).\n' \
