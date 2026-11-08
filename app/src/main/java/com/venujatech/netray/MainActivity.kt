@@ -621,6 +621,7 @@ private fun NetrayScreen() {
                         settings.edit().putString("accent_color", checked).apply()
                     },
                     vpnBusy = anyBusy,
+                    connected = connected,
                     onCheckForUpdates = { scope.launch {
                         val repository = GitHubReleaseRepository(context)
                         val result = withContext(Dispatchers.IO) { repository.check(BuildConfig.VERSION_NAME, false) }

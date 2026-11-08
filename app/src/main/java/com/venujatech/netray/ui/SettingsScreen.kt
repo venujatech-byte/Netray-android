@@ -54,6 +54,7 @@ fun SettingsScreen(
     accentColor: String,
     onAccentColorChange: (String) -> Unit,
     vpnBusy: Boolean,
+    connected: Boolean,
     onCheckForUpdates: () -> Unit,
     onViewLogs: () -> Unit
 ) {
@@ -126,12 +127,14 @@ fun SettingsScreen(
                             SegmentedButton(
                                 selected = selectedMode == 0,
                                 onClick = { selectedMode = 0; onConnectionModeChange(0) },
+                                enabled = !vpnBusy && !connected,
                                 shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
                                 label = { Text("TUN") }
                             )
                             SegmentedButton(
                                 selected = selectedMode == 1,
                                 onClick = { selectedMode = 1; onConnectionModeChange(1) },
+                                enabled = !vpnBusy && !connected,
                                 shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
                                 label = { Text("Proxy") }
                             )
@@ -219,7 +222,7 @@ fun SettingsScreen(
                             title = "Allow insecure (TLS)",
                             subtitle = "Skips certificate validation. Turn off for verified TLS.",
                             checked = allowInsecureTls,
-                            enabled = !vpnBusy,
+                            enabled = !vpnBusy && !connected,
                             onCheckedChange = onAllowInsecureTlsChange
                         )
                         SwitchRow(
