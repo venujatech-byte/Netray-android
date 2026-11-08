@@ -194,7 +194,6 @@ private fun NetrayScreen() {
     val proxyBusy = proxyState is NetrayProxyService.State.Connecting || proxyState is NetrayProxyService.State.Stopping
     val anyBusy = busy || proxyBusy
     val selectedProfile = profiles.firstOrNull { it.id == selectedId }
-    var activeMode by rememberSaveable { mutableIntStateOf(0) } // 0=TUN, 1=Proxy
     var proxyHttpPort by remember { mutableIntStateOf(ProxyConfig.DEFAULT_HTTP_PORT) }
 
     var currentScreen by rememberSaveable { mutableStateOf("configs") }
@@ -880,7 +879,7 @@ private fun NetrayScreen() {
                             }
 
                             // Proxy mode guidance: shown only when proxy is active
-                            if (proxyConnected && activeMode == 1) {
+                            if (proxyConnected) {
                                 Card(
                                     modifier = Modifier.fillMaxWidth()
                                         .padding(PaddingValues(start = 2.dp, top = 0.dp, end = 2.dp, bottom = 8.dp)),
@@ -979,19 +978,17 @@ private fun NetrayScreen() {
                                     onClick = {
                                         if (connected) {
                                             // Disconnect whichever mode is active
-                                            if (activeMode == 1) {
+                                            if (proxyConnected) {
                                                 startProxyTunnel(context, null, mode = 1, disconnect = true)
                                             } else {
                                                 startTunnel(context, null, mode = 0, disconnect = true)
                                             }
-                                            activeMode = 0
                                         } else if (selectedMode == 1) {
                                             // Connect in Proxy mode — never calls VpnService API
                                             if (android.os.Build.VERSION.SDK_INT >= 33 &&
                                                 context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                                                 notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
                                             } else {
-                                                activeMode = 1
                                                 val prefs = context.getSharedPreferences("settings", 0)
                                                 proxyHttpPort = ProxyConfig.loadPorts(prefs)[1]
                                                 startProxyTunnel(context, selectedId, selectedMode)
@@ -1002,7 +999,6 @@ private fun NetrayScreen() {
                                                 context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                                                 notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
                                             } else {
-                                                activeMode = 0
                                                 requestVpnConsent()
                                             }
                                         }
