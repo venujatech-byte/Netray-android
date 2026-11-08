@@ -7,3 +7,7 @@ app/libs/
 app/src/main/jniLibs/
 app/src/main/assets/licenses/
 native/target/
+
+app/src/main/assets/licenses/xray-source.tar.gz
+.idea/
+.kotlin/

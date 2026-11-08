@@ -1,0 +1,4 @@
+<resources>
+    <color name="netray_launch_background">#111111</color>
+    <color name="netray_launch_accent">#2788FF</color>
+</resources>

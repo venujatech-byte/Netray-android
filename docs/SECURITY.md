@@ -28,4 +28,15 @@ Request only permissions needed for the implemented features. Explain VPN consen
 - This app pins XTLS/libXray v26.10.31 (MIT) and the Xray-core source commit recorded by that release's `go.mod`; its build script places both upstream license texts in APK assets. The Xray source is at https://github.com/XTLS/Xray-core and libXray source at https://github.com/XTLS/libXray.
 - Review the generated Go module dependency licenses and final APK contents before publishing a release; the initial CI artifact is a debug build, not a release package.
 - Maintain a third-party inventory with component, version, license, upstream URL, modifications, and included notice. Verify it against the final APK/AAB.
-- Netray's license and Xray's license are separate. Do not remove, rewrite, or imply ownership of upstream notices.
+- Release R8 is enabled in full mode with resource shrinking. The app's local keep rule preserves only the `NativeBackend` JNI entry points; libXray contributes consumer rules (`go.**` and `libXray.**`) required by its reflective Go bridge.
+
+### New runtime dependencies (QR scanner)
+
+| Component | Version | License | Upstream | Purpose |
+|---|---|---|---|---|
+| CameraX (camera-core, camera-camera2, camera-lifecycle, camera-view) | 1.3.2 | Apache-2.0 | https://developer.android.com/training/camera | In-app QR scanner preview |
+| ZXing Core | 3.5.3 | Apache-2.0 | https://github.com/zxing/zxing | QR code generation, live decoding, and image decoding |
+| AndroidX ExifInterface | 1.4.2 | Apache-2.0 | https://developer.android.com/jetpack/androidx/releases/exifinterface | Read image orientation before decoding imported QR images |
+| `android.permission.CAMERA` | — | platform | Android | Required to open the camera for QR scanning |
+
+Netray's license and Xray's license are separate. Do not remove, rewrite, or imply ownership of upstream notices.
