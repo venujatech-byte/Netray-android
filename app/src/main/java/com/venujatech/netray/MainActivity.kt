@@ -519,7 +519,6 @@ private fun NetrayScreen() {
                         )
                         Spacer(Modifier.width(16.dp))
                         Column {
-                            Text("Netray", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                             Text(stringResource(R.string.app_version_short, BuildConfig.VERSION_NAME), style = MaterialTheme.typography.bodySmall, color = palette.textSecondary)
                         }
                     }
@@ -709,7 +708,7 @@ private fun NetrayScreen() {
                                     contentDescription = "Netray logo",
                                     modifier = Modifier.size(34.dp).clip(CircleShape)
                                 )
-                                Text("Netray", Modifier.padding(start = 12.dp).weight(1f), fontSize = 21.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
+                                Spacer(Modifier.weight(1f))
                                 Box {
                                     IconButton(
                                         onClick = { addMenuExpanded = true },
