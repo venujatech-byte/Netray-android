@@ -9,6 +9,9 @@ import libXray.LibXray
 import libXray.ProcessFinder
 import com.venujatech.netray.profiles.NativeBackend
 import com.venujatech.netray.proxy.ProxyModeGuard
+import com.venujatech.netray.whitelist.AppWhitelist
+import com.venujatech.netray.whitelist.AppWhitelistRepository
+import com.venujatech.netray.whitelist.WhitelistEnforcer
 import org.json.JSONObject
 
 enum class TunnelMode { TUN, PROXY }
@@ -22,7 +25,14 @@ enum class TunnelMode { TUN, PROXY }
  */
 class LibXrayEngine(private val context: Context, private val service: VpnService? = null) {
 
-    fun start(link: String, mode: TunnelMode, tunFd: Int = -1, socksPort: Int = 10808, httpPort: Int = 10809) {
+    fun start(
+        link: String,
+        mode: TunnelMode,
+        tunFd: Int = -1,
+        socksPort: Int = 10808,
+        httpPort: Int = 10809,
+        whitelist: AppWhitelist = AppWhitelistRepository.get(context).whitelist.value
+    ) {
         if (mode == TunnelMode.PROXY) {
             ProxyModeGuard.enterProxyMode()
         } else {
@@ -65,6 +75,7 @@ class LibXrayEngine(private val context: Context, private val service: VpnServic
             }
         }
         require(!config.has("error")) { config.optString("error", "Could not prepare Xray config") }
+        WhitelistEnforcer.addDirectRouting(config, whitelist, host)
         invoke("runXray", JSONObject().put("xrayJson", config.toString()))
     }
 

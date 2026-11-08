@@ -90,6 +90,7 @@ import com.venujatech.netray.ui.theme.paletteForAccent
 import com.venujatech.netray.ui.theme.darkColorSchemeWithAccent
 import com.venujatech.netray.ui.theme.lightColorSchemeWithAccent
 import com.venujatech.netray.vpn.NetrayVpnService
+import com.venujatech.netray.whitelist.AppWhitelistActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -636,6 +637,7 @@ private fun NetrayScreen() {
                     },
                     vpnBusy = anyBusy,
                     connected = connected,
+                    onOpenAppWhitelist = { context.startActivity(Intent(context, AppWhitelistActivity::class.java)) },
                     onViewLogs = { currentScreen = "logs" }
                 )
                 "updates" -> UpdateScreen(

@@ -15,6 +15,15 @@ import androidx.core.app.NotificationCompat
 import com.venujatech.netray.R
 import com.venujatech.netray.profiles.ProfileStore
 import com.venujatech.netray.proxy.ProxyModeGuard
+import com.venujatech.netray.whitelist.AppWhitelistRepository
+import com.venujatech.netray.whitelist.WhitelistEnforcer
+import com.venujatech.netray.whitelist.AppWhitelist
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import com.venujatech.netray.xray.LibXrayEngine
 import com.venujatech.netray.xray.TunnelMode
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,9 +34,22 @@ class NetrayVpnService : VpnService() {
     private val worker = Executors.newSingleThreadExecutor { Thread(it, "NetrayVpn").apply { isDaemon = true } }
     private var tun: android.os.ParcelFileDescriptor? = null
     private var engine: LibXrayEngine? = null
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    @Volatile private var appliedWhitelist: AppWhitelist? = null
 
     inner class LocalBinder : Binder() { val service get() = this@NetrayVpnService }
     override fun onBind(intent: Intent?): IBinder? = if (intent?.action == SERVICE_INTERFACE) super.onBind(intent) else binder
+
+    override fun onCreate() {
+        super.onCreate()
+        serviceScope.launch {
+            AppWhitelistRepository.get(this@NetrayVpnService).whitelist.collect { current ->
+                if (state.value is State.Connected && appliedWhitelist != null && current != appliedWhitelist) {
+                    updateNotification("Whitelist changed — reconnect to apply")
+                }
+            }
+        }
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_DISCONNECT) { stopTunnel(); return START_NOT_STICKY }
@@ -54,6 +76,7 @@ class NetrayVpnService : VpnService() {
     }
 
     private fun connect(profileId: String, mode: TunnelMode) {
+        var unavailableWhitelistApps = emptyList<String>()
         try {
             ProxyModeGuard.assertNoVpnApi("NetrayVpnService.connect")
             ProxyModeGuard.leaveProxyMode()
@@ -62,16 +85,21 @@ class NetrayVpnService : VpnService() {
 
             when (mode) {
                 TunnelMode.TUN -> {
-                    val descriptor = Builder().setSession("Netray").setMtu(1500)
+                    val whitelist = AppWhitelistRepository.get(this).whitelist.value
+                    appliedWhitelist = whitelist
+                    val builder = Builder().setSession("Netray").setMtu(1500)
                         .addAddress("10.0.0.2", 30).addRoute("0.0.0.0", 0).addDnsServer("1.1.1.1")
                         .addAddress("fd00::2", 126).addRoute("::", 0).addDnsServer("2606:4700:4700::1111")
-                        .establish() ?: error("Android did not establish the VPN")
+                    val missingApps = WhitelistEnforcer.excludeApps(builder, this, whitelist.appPackages)
+                    unavailableWhitelistApps = missingApps
+                    if (missingApps.isNotEmpty()) Log.w("NetrayVpn", "Skipped ${missingApps.size} uninstalled or unavailable whitelist app(s)")
+                    val descriptor = builder.establish() ?: error("Android did not establish the VPN")
                     android.util.Log.i("NetrayVpn", "Android VPN interface established")
                     tun = descriptor
                     val xray = LibXrayEngine(this, this)
                     engine = xray
                     android.util.Log.i("NetrayVpn", "Starting Xray in TUN mode")
-                    xray.start(profile.link, TunnelMode.TUN, descriptor.fd)
+                    xray.start(profile.link, TunnelMode.TUN, descriptor.fd, whitelist = whitelist)
                 }
                 TunnelMode.PROXY -> {
                     // Defensive: Proxy mode should use NetrayProxyService, not this VpnService.
@@ -104,7 +132,12 @@ class NetrayVpnService : VpnService() {
             android.util.Log.i("NetrayVpn", "Tunnel connectivity check passed")
             state.value = State.Connected
             connectedAt = android.os.SystemClock.elapsedRealtime()
-            updateNotification("Connected")
+            val changed = mode == TunnelMode.TUN && AppWhitelistRepository.get(this).whitelist.value != appliedWhitelist
+            updateNotification(when {
+                changed -> "Whitelist changed — reconnect to apply"
+                unavailableWhitelistApps.isNotEmpty() -> "Some whitelist apps unavailable; review list"
+                else -> "Connected"
+            })
         } catch (e: Exception) {
             android.util.Log.e("NetrayVpn", "Connection failed: " + (e.cause ?: e).javaClass.simpleName)
             android.util.Log.e("NetrayVpn", com.venujatech.netray.ConnectionLogs.sanitize(e.cause?.message ?: e.message ?: "Unknown error"))
@@ -136,7 +169,7 @@ class NetrayVpnService : VpnService() {
     }
 
     override fun onRevoke() { stopTunnel(); super.onRevoke() }
-    override fun onDestroy() { worker.shutdownNow(); releaseTunnel(); state.value = State.Disconnected; super.onDestroy() }
+    override fun onDestroy() { serviceScope.cancel(); worker.shutdownNow(); releaseTunnel(); appliedWhitelist = null; state.value = State.Disconnected; super.onDestroy() }
 
     private fun notification(status: String): Notification {
         val manager = getSystemService(NotificationManager::class.java)

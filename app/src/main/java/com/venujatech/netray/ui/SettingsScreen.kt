@@ -54,6 +54,7 @@ fun SettingsScreen(
     onAccentColorChange: (String) -> Unit,
     vpnBusy: Boolean,
     connected: Boolean,
+    onOpenAppWhitelist: () -> Unit,
     onViewLogs: () -> Unit
 ) {
     var selectedMode by remember { mutableIntStateOf(settings.getInt("connection_mode", 0)) }
@@ -237,6 +238,21 @@ fun SettingsScreen(
                             enabled = !vpnBusy,
                             onCheckedChange = onAutoCheckUpdatesChange
                         )
+                    }
+                }
+            }
+
+            item(key = "app_whitelist") {
+                SettingsCard(title = "App Whitelist") {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            "Choose apps and destinations that should bypass the Xray proxy routing.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedButton(onClick = onOpenAppWhitelist, modifier = Modifier.fillMaxWidth()) {
+                            Text("App Whitelist")
+                        }
                     }
                 }
             }

@@ -24,6 +24,7 @@ import com.venujatech.netray.proxy.ProxyConfig.MAX_PORT
 import com.venujatech.netray.proxy.ProxyConfig.MIN_PORT
 import com.venujatech.netray.xray.LibXrayEngine
 import com.venujatech.netray.xray.TunnelMode
+import com.venujatech.netray.whitelist.AppWhitelistRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.concurrent.Executors
 
@@ -95,7 +96,8 @@ class NetrayProxyService : Service() {
             Log.i("NetrayProxy", "Starting Xray in Proxy mode (SOCKS5 $socksPort, HTTP $httpPort)")
             val xray = LibXrayEngine(this@NetrayProxyService)
             engine = xray
-            xray.start(profile.link, TunnelMode.PROXY, tunFd = -1, socksPort = socksPort, httpPort = httpPort)
+            val whitelist = AppWhitelistRepository.get(this@NetrayProxyService).whitelist.value
+            xray.start(profile.link, TunnelMode.PROXY, tunFd = -1, socksPort = socksPort, httpPort = httpPort, whitelist = whitelist)
 
             // Readiness check through the local HTTP proxy inbound (not direct HTTPS)
             val ready = httpProxyReady(httpPort, timeoutMs = 5000)
