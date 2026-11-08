@@ -110,7 +110,7 @@
     <string name="update_version">Version %1$s</string>
     <string name="update_release_date">Released %1$s</string>
     <string name="update_apk_size">APK size: %1$s</string>
-    <string name="update_button">Update</string>
+    <string name="update_button">Download &amp; install</string>
     <string name="update_later">Later</string>
     <string name="update_cancel_warning">The VPN will disconnect to install the update.</string>
     <string name="update_cancel_download">Cancel download</string>

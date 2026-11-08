@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -89,7 +90,7 @@ fun UpdateScreen(
         }
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(stringResource(R.string.update_current_version, installedVersion), color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -173,16 +174,16 @@ private fun UpdateReleasePanel(release: AndroidRelease, onUpdate: (AndroidReleas
     val date = release.publishedAt.take(10).ifBlank { "—" }
     val size = if (release.assetSize > 0) "%.1f MB".format(release.assetSize / 1_000_000f) else "—"
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(stringResource(R.string.update_available), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
             Text(stringResource(R.string.update_version, release.version), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(stringResource(R.string.update_release_date, date), color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(stringResource(R.string.update_apk_size, size), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ReleaseNotes(release.notes)
-            }
             Button(onClick = { onUpdate(release) }, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.update_button))
+            }
+            Column(modifier = Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ReleaseNotes(release.notes)
             }
         }
     }
