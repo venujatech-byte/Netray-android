@@ -39,6 +39,7 @@ class StartupReceiver : BroadcastReceiver() {
     private fun handleBoot(context: Context) {
         val preferences = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
         if (!preferences.getBoolean("run_at_startup", false)) return
+        showOpenNotification(context, "Netray started after device boot.")
         if (!preferences.getBoolean("connect_at_startup", false)) {
             showOpenNotification(context, "Netray is ready. Tap to open the app.")
             return
@@ -106,6 +107,6 @@ class StartupReceiver : BroadcastReceiver() {
 
     private companion object {
         const val CHANNEL = "startup"
-        const val NOTIFICATION_ID = 42
+        const val NOTIFICATION_ID = 43
     }
 }

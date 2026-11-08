@@ -183,6 +183,7 @@ private fun NetrayScreen() {
     var runAtStartup by remember { mutableStateOf(settings.getBoolean("run_at_startup", false)) }
     var connectAtStartup by remember { mutableStateOf(settings.getBoolean("connect_at_startup", false)) }
     var startupConnectHandled by rememberSaveable { mutableStateOf(false) }
+    var requestingRunStartup by remember { mutableStateOf(false) }
     var autoReconnect by remember { mutableStateOf(settings.getBoolean("auto_reconnect", true)) }
     var notifyConnectionDrops by remember { mutableStateOf(settings.getBoolean("notify_connection_drops", true)) }
     var autoCheckUpdates by remember { mutableStateOf(settings.getBoolean("auto_check_updates", true)) }
@@ -435,7 +436,34 @@ private fun NetrayScreen() {
     }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed ->
         if (allowed) requestVpnConsent()
-        else notificationError = "Allow notifications so Android can show the VPN's background status."
+        else {
+            notificationError = "Allow notifications so Android can show the VPN's background status and startup notice."
+            if (runAtStartup) {
+                runAtStartup = false
+                settings.edit().putBoolean("run_at_startup", false).apply()
+            }
+        }
+    }
+    val runStartupNotificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed ->
+        if (allowed && requestingRunStartup) {
+            runAtStartup = true
+            settings.edit().putBoolean("run_at_startup", true).apply()
+        } else if (!allowed) {
+            if (runAtStartup) {
+                runAtStartup = false
+                settings.edit().putBoolean("run_at_startup", false).apply()
+            }
+            notificationError = "Allow notifications so Netray can show a notice after device boot."
+        }
+        requestingRunStartup = false
+    }
+
+    LaunchedEffect(runAtStartup, connectAtStartup) {
+        if (runAtStartup && !connectAtStartup && Build.VERSION.SDK_INT >= 33 &&
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            runStartupNotificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 
     LaunchedEffect(storeReady) {
@@ -616,8 +644,18 @@ private fun NetrayScreen() {
                     },
                     runAtStartup = runAtStartup,
                     onRunAtStartupChange = { checked ->
-                        runAtStartup = checked
-                        settings.edit().putBoolean("run_at_startup", checked).apply()
+                        if (!checked) {
+                            runAtStartup = false
+                            settings.edit().putBoolean("run_at_startup", false).apply()
+                        } else if (Build.VERSION.SDK_INT >= 33 &&
+                            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                        ) {
+                            requestingRunStartup = true
+                            runStartupNotificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                        } else {
+                            runAtStartup = true
+                            settings.edit().putBoolean("run_at_startup", true).apply()
+                        }
                     },
                     connectAtStartup = connectAtStartup,
                     onConnectAtStartupChange = { checked ->
