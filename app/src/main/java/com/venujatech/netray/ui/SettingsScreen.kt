@@ -191,14 +191,14 @@ fun SettingsScreen(
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                         SwitchRow(
                             title = "Run at system startup",
-                            subtitle = "Start Netray automatically on device boot.",
+                            subtitle = "After boot, connect if enabled below; otherwise show a notification to open Netray.",
                             checked = runAtStartup,
                             enabled = !vpnBusy,
                             onCheckedChange = onRunAtStartupChange
                         )
                         SwitchRow(
                             title = "Connect at startup",
-                            subtitle = "Prompt to connect automatically on launch.",
+                            subtitle = "Connect when Netray opens. Also connect after boot when Run at system startup is enabled.",
                             checked = connectAtStartup,
                             enabled = !vpnBusy,
                             onCheckedChange = onConnectAtStartupChange

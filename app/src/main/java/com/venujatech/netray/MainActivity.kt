@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.net.VpnService
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.webkit.WebView
@@ -146,7 +147,9 @@ private fun NetrayScreen() {
     val profiles = remember { mutableStateListOf<Profile>() }
     val pingResults = remember { mutableStateMapOf<String, String>() }
     val pinging = remember { mutableStateMapOf<String, Boolean>() }
-    var selectedId by rememberSaveable { mutableStateOf("") }
+    var selectedId by rememberSaveable {
+        mutableStateOf(context.getSharedPreferences("settings", 0).getString("selected_profile_id", "").orEmpty())
+    }
     var link by rememberSaveable { mutableStateOf("") }
     var importError by rememberSaveable { mutableStateOf("") }
     var storageError by remember { mutableStateOf("") }
@@ -179,6 +182,7 @@ private fun NetrayScreen() {
     var allowInsecureTls by remember { mutableStateOf(settings.getBoolean("allow_insecure_tls", false)) }
     var runAtStartup by remember { mutableStateOf(settings.getBoolean("run_at_startup", false)) }
     var connectAtStartup by remember { mutableStateOf(settings.getBoolean("connect_at_startup", false)) }
+    var startupConnectHandled by rememberSaveable { mutableStateOf(false) }
     var autoReconnect by remember { mutableStateOf(settings.getBoolean("auto_reconnect", true)) }
     var notifyConnectionDrops by remember { mutableStateOf(settings.getBoolean("notify_connection_drops", true)) }
     var autoCheckUpdates by remember { mutableStateOf(settings.getBoolean("auto_check_updates", true)) }
@@ -240,7 +244,8 @@ private fun NetrayScreen() {
         runCatching { withContext(Dispatchers.IO) { store.load() } }
             .onSuccess { loaded ->
                 profiles.addAll(loaded)
-                if (selectedId.isBlank()) selectedId = loaded.firstOrNull()?.id.orEmpty()
+                if (loaded.none { it.id == selectedId }) selectedId = loaded.firstOrNull()?.id.orEmpty()
+                if (selectedId.isNotBlank()) settings.edit().putString("selected_profile_id", selectedId).apply()
                 storeReady = true
             }
             .onFailure { storageError = "Saved profiles could not be read. They have been kept unchanged." }
@@ -267,7 +272,10 @@ private fun NetrayScreen() {
                 withContext(Dispatchers.IO) { store.save(next) }
                 profiles.clear()
                 profiles.addAll(next)
-                if (selectedId.isBlank()) selectedId = candidate.id
+                if (selectedId.isBlank()) {
+                    selectedId = candidate.id
+                    settings.edit().putString("selected_profile_id", selectedId).apply()
+                }
                 replacingId?.let { pingResults.remove(it); pinging.remove(it) }
                 editTarget = null
                 addProtocolKey = null
@@ -377,7 +385,10 @@ private fun NetrayScreen() {
                         val next = profiles + additions
                         withContext(Dispatchers.IO) { store.save(next) }
                         profiles.addAll(additions)
-                        if (selectedId.isBlank()) selectedId = additions.first().id
+                        if (selectedId.isBlank()) {
+                            selectedId = additions.first().id
+                            settings.edit().putString("selected_profile_id", selectedId).apply()
+                        }
                     } catch (cancelled: kotlinx.coroutines.CancellationException) {
                         throw cancelled
                     } catch (_: Exception) {
@@ -425,6 +436,19 @@ private fun NetrayScreen() {
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed ->
         if (allowed) requestVpnConsent()
         else notificationError = "Allow notifications so Android can show the VPN's background status."
+    }
+
+    LaunchedEffect(storeReady) {
+        if (!storeReady || startupConnectHandled) return@LaunchedEffect
+        startupConnectHandled = true
+        if (!connectAtStartup || selectedId.isBlank() || connected || anyBusy) return@LaunchedEffect
+        if (Build.VERSION.SDK_INT >= 33 &&
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            requestVpnConsent()
+        }
     }
 
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -861,7 +885,10 @@ private fun NetrayScreen() {
                                                 pinging[profile.id] = false
                                             }
                                         },
-                                        onSelect = { selectedId = profile.id }, onDelete = { deleteTarget = profile },
+                                        onSelect = {
+                                            selectedId = profile.id
+                                            settings.edit().putString("selected_profile_id", profile.id).apply()
+                                        }, onDelete = { deleteTarget = profile },
                                         onEdit = {
                                             editError = ""
                                             if (profile.protocol == ProtocolKind.RAW_JSON) {
@@ -1133,7 +1160,10 @@ private fun NetrayScreen() {
                     runCatching { withContext(Dispatchers.IO) { store.save(next) } }
                         .onSuccess {
                             profiles.remove(profile)
-                            if (selectedId == profile.id) selectedId = next.firstOrNull()?.id.orEmpty()
+                            if (selectedId == profile.id) {
+                                selectedId = next.firstOrNull()?.id.orEmpty()
+                                settings.edit().putString("selected_profile_id", selectedId).apply()
+                            }
                             deleteTarget = null
                         }
                         .onFailure { storageError = "Could not save profile changes; the saved file was preserved."; deleteTarget = null }
