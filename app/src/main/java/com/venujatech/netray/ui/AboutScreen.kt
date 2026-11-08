@@ -18,7 +18,8 @@ import com.venujatech.netray.R
 @Composable
 fun AboutScreen(
     onOpenDrawer: () -> Unit,
-    appVersion: String
+    appVersion: String,
+    onCheckForUpdates: () -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -52,6 +53,9 @@ fun AboutScreen(
 
             Text("Netray", style = MaterialTheme.typography.headlineMedium)
             Text(stringResource(R.string.app_version, appVersion), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedButton(onClick = onCheckForUpdates, modifier = Modifier.fillMaxWidth()) {
+                Text("Check for Updates")
+            }
 
             Spacer(Modifier.height(8.dp))
 

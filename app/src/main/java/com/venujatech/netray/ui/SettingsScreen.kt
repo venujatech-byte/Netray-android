@@ -28,7 +28,6 @@ import com.venujatech.netray.ui.theme.onColorFor
 fun SettingsScreen(
     onOpenDrawer: () -> Unit,
     settings: SharedPreferences,
-    appVersion: String,
     themeMode: String,
     onThemeChange: (String) -> Unit,
     connectionMode: Int,
@@ -55,7 +54,6 @@ fun SettingsScreen(
     onAccentColorChange: (String) -> Unit,
     vpnBusy: Boolean,
     connected: Boolean,
-    onCheckForUpdates: () -> Unit,
     onViewLogs: () -> Unit
 ) {
     var selectedMode by remember { mutableIntStateOf(settings.getInt("connection_mode", 0)) }
@@ -239,25 +237,6 @@ fun SettingsScreen(
                             enabled = !vpnBusy,
                             onCheckedChange = onAutoCheckUpdatesChange
                         )
-                    }
-                }
-            }
-
-            // App Updates
-            item(key = "app_updates") {
-                SettingsCard(title = "App Updates") {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(
-                            text = stringResource(R.string.app_version, appVersion),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        OutlinedButton(
-                            onClick = onCheckForUpdates,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Check for Updates")
-                        }
                     }
                 }
             }

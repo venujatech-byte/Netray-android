@@ -519,6 +519,7 @@ private fun NetrayScreen() {
                         )
                         Spacer(Modifier.width(16.dp))
                         Column {
+                            Text("Netray", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                             Text(stringResource(R.string.app_version_short, BuildConfig.VERSION_NAME), style = MaterialTheme.typography.bodySmall, color = palette.textSecondary)
                         }
                     }
@@ -573,7 +574,6 @@ private fun NetrayScreen() {
                 "settings" -> SettingsScreen(
                     onOpenDrawer = { scope.launch { drawerState.open() } },
                     settings = settings,
-                    appVersion = BuildConfig.VERSION_NAME,
                     themeMode = themeMode,
                     onThemeChange = { mode ->
                         themeMode = mode
@@ -636,10 +636,6 @@ private fun NetrayScreen() {
                     },
                     vpnBusy = anyBusy,
                     connected = connected,
-                    onCheckForUpdates = {
-                        currentScreen = "updates"
-                        checkForUpdates()
-                    },
                     onViewLogs = { currentScreen = "logs" }
                 )
                 "updates" -> UpdateScreen(
@@ -647,7 +643,7 @@ private fun NetrayScreen() {
                     result = updateResult,
                     checking = checkingUpdates,
                     downloadState = updateDownloadState,
-                    onBack = { currentScreen = "settings" },
+                    onBack = { currentScreen = "about" },
                     onCheck = checkForUpdates,
                     onUpdate = { release -> UpdateDownloadService.start(context, release) },
                     onCancelDownload = { UpdateDownloadService.cancel(context) },
@@ -666,7 +662,11 @@ private fun NetrayScreen() {
                 )
                 "about" -> AboutScreen(
                     onOpenDrawer = { scope.launch { drawerState.open() } },
-                    appVersion = BuildConfig.VERSION_NAME
+                    appVersion = BuildConfig.VERSION_NAME,
+                    onCheckForUpdates = {
+                        currentScreen = "updates"
+                        checkForUpdates()
+                    }
                 )
                 else -> {
                     var swipeDrag by remember { mutableFloatStateOf(0f) }
