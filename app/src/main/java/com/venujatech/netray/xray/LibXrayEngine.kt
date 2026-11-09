@@ -12,7 +12,9 @@ import com.venujatech.netray.proxy.ProxyModeGuard
 import com.venujatech.netray.whitelist.AppWhitelist
 import com.venujatech.netray.whitelist.AppWhitelistRepository
 import com.venujatech.netray.whitelist.WhitelistEnforcer
+import com.venujatech.netray.vpn.DnsServerConfig
 import org.json.JSONObject
+import org.json.JSONArray
 
 enum class TunnelMode { TUN, PROXY }
 
@@ -43,7 +45,12 @@ class LibXrayEngine(private val context: Context, private val service: VpnServic
         VpnDialerController.activeService = dialerService
         ensureDialerRegistered()
         LibXray.registerProcessFinder(ProcessFinder { _, _, _, _, _ -> -1L }, Build.VERSION.SDK_INT.toLong())
-        LibXray.setDNS(VpnDialerController, "1.1.1.1:53")
+        val preferences = context.getSharedPreferences("settings", 0)
+        val primaryDns = DnsServerConfig.normalize(preferences.getString("dns_primary", null).orEmpty())
+            ?: DnsServerConfig.DEFAULT_PRIMARY
+        val secondaryDns = DnsServerConfig.normalize(preferences.getString("dns_secondary", null).orEmpty())
+            ?: DnsServerConfig.DEFAULT_SECONDARY
+        LibXray.setDNS(VpnDialerController, DnsServerConfig.endpoint(primaryDns))
         val converted = invoke("convertShareLinksToXrayJson", JSONObject().put("text", link)).getJSONObject("data")
         val outbounds = converted.getJSONArray("outbounds")
         val allowInsecure = context.getSharedPreferences("settings", 0).getBoolean("allow_insecure_tls", false)
@@ -75,6 +82,8 @@ class LibXrayEngine(private val context: Context, private val service: VpnServic
             }
         }
         require(!config.has("error")) { config.optString("error", "Could not prepare Xray config") }
+        val dns = config.optJSONObject("dns") ?: JSONObject().also { config.put("dns", it) }
+        dns.put("servers", JSONArray().put(primaryDns).put(secondaryDns))
         WhitelistEnforcer.addDirectRouting(config, whitelist, host)
         invoke("runXray", JSONObject().put("xrayJson", config.toString()))
     }

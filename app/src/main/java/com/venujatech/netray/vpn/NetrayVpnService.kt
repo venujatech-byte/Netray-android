@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Intent
+import android.net.IpPrefix
 import android.net.VpnService
 import android.os.Binder
 import android.os.Build
@@ -27,6 +28,7 @@ import kotlinx.coroutines.launch
 import com.venujatech.netray.xray.LibXrayEngine
 import com.venujatech.netray.xray.TunnelMode
 import kotlinx.coroutines.flow.MutableStateFlow
+import java.net.InetAddress
 import java.util.concurrent.Executors
 
 class NetrayVpnService : VpnService() {
@@ -87,9 +89,29 @@ class NetrayVpnService : VpnService() {
                 TunnelMode.TUN -> {
                     val whitelist = AppWhitelistRepository.get(this).whitelist.value
                     appliedWhitelist = whitelist
+                    val preferences = getSharedPreferences("settings", MODE_PRIVATE)
+                    val primaryDns = DnsServerConfig.normalize(preferences.getString("dns_primary", null).orEmpty())
+                        ?: DnsServerConfig.DEFAULT_PRIMARY
+                    val secondaryDns = DnsServerConfig.normalize(preferences.getString("dns_secondary", null).orEmpty())
+                        ?: DnsServerConfig.DEFAULT_SECONDARY
+                    val bypassLan = preferences.getBoolean("bypass_lan", false)
                     val builder = Builder().setSession("Netray").setMtu(1500)
-                        .addAddress("10.0.0.2", 30).addRoute("0.0.0.0", 0).addDnsServer("1.1.1.1")
-                        .addAddress("fd00::2", 126).addRoute("::", 0).addDnsServer("2606:4700:4700::1111")
+                        .addAddress("10.0.0.2", 30).addAddress("fd00::2", 126)
+                    if (bypassLan && Build.VERSION.SDK_INT >= 33) {
+                        builder.addRoute("0.0.0.0", 0).addRoute("::", 0)
+                    } else {
+                        VpnRoutePolicy.includedRoutes(bypassLan).forEach { route ->
+                            val (address, prefix) = route.split('/')
+                            builder.addRoute(InetAddress.getByName(address), prefix.toInt())
+                        }
+                    }
+                    builder.addDnsServer(primaryDns).addDnsServer(secondaryDns)
+                    if (bypassLan && Build.VERSION.SDK_INT >= 33) {
+                        VpnRoutePolicy.lanExclusions.forEach { route ->
+                            val (address, prefix) = route.split('/')
+                            builder.excludeRoute(IpPrefix(InetAddress.getByName(address), prefix.toInt()))
+                        }
+                    }
                     val missingApps = WhitelistEnforcer.excludeApps(builder, this, whitelist.appPackages)
                     unavailableWhitelistApps = missingApps
                     if (missingApps.isNotEmpty()) Log.w("NetrayVpn", "Skipped ${missingApps.size} uninstalled or unavailable whitelist app(s)")

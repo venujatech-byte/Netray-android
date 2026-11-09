@@ -91,6 +91,7 @@ import com.venujatech.netray.ui.theme.paletteForAccent
 import com.venujatech.netray.ui.theme.darkColorSchemeWithAccent
 import com.venujatech.netray.ui.theme.lightColorSchemeWithAccent
 import com.venujatech.netray.vpn.NetrayVpnService
+import com.venujatech.netray.vpn.DnsServerConfig
 import com.venujatech.netray.whitelist.AppWhitelistActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -190,6 +191,13 @@ private fun NetrayScreen() {
     var instantImport by remember { mutableStateOf(settings.getBoolean("instant_import", false)) }
     var socksPort by remember { mutableIntStateOf(settings.getInt("proxy_socks_port", 10808)) }
     var httpPort by remember { mutableIntStateOf(settings.getInt("proxy_http_port", 10809)) }
+    var dnsPrimary by remember {
+        mutableStateOf(DnsServerConfig.normalize(settings.getString("dns_primary", DnsServerConfig.DEFAULT_PRIMARY).orEmpty()) ?: DnsServerConfig.DEFAULT_PRIMARY)
+    }
+    var dnsSecondary by remember {
+        mutableStateOf(DnsServerConfig.normalize(settings.getString("dns_secondary", DnsServerConfig.DEFAULT_SECONDARY).orEmpty()) ?: DnsServerConfig.DEFAULT_SECONDARY)
+    }
+    var bypassLan by remember { mutableStateOf(settings.getBoolean("bypass_lan", false)) }
     var accentColor by remember { mutableStateOf(settings.getString("accent_color", "blue") ?: "blue") }
     val state by NetrayVpnService.state.collectAsStateWithLifecycle()
     val proxyState by NetrayProxyService.state.collectAsStateWithLifecycle()
@@ -691,6 +699,18 @@ private fun NetrayScreen() {
                     onHttpPortChange = { port ->
                         httpPort = port
                         settings.edit().putInt("proxy_http_port", port).apply()
+                    },
+                    dnsPrimary = dnsPrimary,
+                    dnsSecondary = dnsSecondary,
+                    onDnsServersChange = { primary, secondary ->
+                        dnsPrimary = primary
+                        dnsSecondary = secondary
+                        settings.edit().putString("dns_primary", primary).putString("dns_secondary", secondary).apply()
+                    },
+                    bypassLan = bypassLan,
+                    onBypassLanChange = { enabled ->
+                        bypassLan = enabled
+                        settings.edit().putBoolean("bypass_lan", enabled).apply()
                     },
                     accentColor = accentColor,
                     onAccentColorChange = { checked ->

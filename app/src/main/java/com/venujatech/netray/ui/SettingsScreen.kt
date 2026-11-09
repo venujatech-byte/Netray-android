@@ -22,6 +22,7 @@ import com.venujatech.netray.R
 import com.venujatech.netray.ui.theme.LocalNetrayPalette
 import com.venujatech.netray.ui.theme.colorForAccent
 import com.venujatech.netray.ui.theme.onColorFor
+import com.venujatech.netray.vpn.DnsServerConfig
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,6 +51,11 @@ fun SettingsScreen(
     onSocksPortChange: (Int) -> Unit,
     httpPort: Int,
     onHttpPortChange: (Int) -> Unit,
+    dnsPrimary: String,
+    dnsSecondary: String,
+    onDnsServersChange: (String, String) -> Unit,
+    bypassLan: Boolean,
+    onBypassLanChange: (Boolean) -> Unit,
     accentColor: String,
     onAccentColorChange: (String) -> Unit,
     vpnBusy: Boolean,
@@ -58,6 +64,11 @@ fun SettingsScreen(
     onViewLogs: () -> Unit
 ) {
     var selectedMode by remember { mutableIntStateOf(settings.getInt("connection_mode", 0)) }
+    var primaryDnsDraft by remember(dnsPrimary) { mutableStateOf(dnsPrimary) }
+    var secondaryDnsDraft by remember(dnsSecondary) { mutableStateOf(dnsSecondary) }
+    val primaryDnsValid = DnsServerConfig.normalize(primaryDnsDraft)
+    val secondaryDnsValid = DnsServerConfig.normalize(secondaryDnsDraft)
+    val duplicateDns = primaryDnsValid != null && primaryDnsValid == secondaryDnsValid
 
     Scaffold(
         topBar = {
@@ -138,6 +149,67 @@ fun SettingsScreen(
                                 label = { Text("Proxy") }
                             )
                         }
+                    }
+                }
+            }
+
+            item(key = "dns_servers") {
+                SettingsCard(title = "DNS Servers") {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedTextField(
+                            value = primaryDnsDraft,
+                            onValueChange = { primaryDnsDraft = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Primary DNS") },
+                            singleLine = true,
+                            enabled = !connected && !vpnBusy,
+                            isError = primaryDnsValid == null
+                        )
+                        OutlinedTextField(
+                            value = secondaryDnsDraft,
+                            onValueChange = { secondaryDnsDraft = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Secondary DNS") },
+                            singleLine = true,
+                            enabled = !connected && !vpnBusy,
+                            isError = secondaryDnsValid == null || duplicateDns
+                        )
+                        Text(
+                            when {
+                                connected -> "Disconnect before changing DNS. Saved values apply on the next connection."
+                                duplicateDns -> "Primary and secondary DNS must be different."
+                                primaryDnsValid == null || secondaryDnsValid == null -> "Enter valid IPv4 or IPv6 DNS addresses."
+                                selectedMode == 1 -> "Xray uses these for its own DNS lookups in Proxy mode. Apps using the local proxy may still use device DNS."
+                                else -> "TUN uses these DNS servers in order. Changes apply on the next connection."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (duplicateDns || primaryDnsValid == null || secondaryDnsValid == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Button(
+                            onClick = { onDnsServersChange(primaryDnsValid!!, secondaryDnsValid!!) },
+                            enabled = !connected && !vpnBusy && primaryDnsValid != null && secondaryDnsValid != null && !duplicateDns &&
+                                (primaryDnsValid != dnsPrimary || secondaryDnsValid != dnsSecondary),
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Apply DNS") }
+                    }
+                }
+            }
+
+            item(key = "bypass_lan") {
+                SettingsCard(title = "Local Network") {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SwitchRow(
+                            title = "Bypass LAN traffic",
+                            subtitle = "Keep private, link-local, and local multicast traffic outside the VPN (for example, 192.168.1.1 and .local devices).",
+                            checked = bypassLan,
+                            enabled = !connected && !vpnBusy,
+                            onCheckedChange = onBypassLanChange
+                        )
+                        Text(
+                            "Disconnect before changing. The setting applies when you connect again.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
