@@ -198,6 +198,7 @@ private fun NetrayScreen() {
         mutableStateOf(DnsServerConfig.normalize(settings.getString("dns_secondary", DnsServerConfig.DEFAULT_SECONDARY).orEmpty()) ?: DnsServerConfig.DEFAULT_SECONDARY)
     }
     var bypassLan by remember { mutableStateOf(settings.getBoolean("bypass_lan", false)) }
+    var ipv6Enabled by remember { mutableStateOf(settings.getBoolean("ipv6_enabled", true)) }
     var accentColor by remember { mutableStateOf(settings.getString("accent_color", "blue") ?: "blue") }
     val state by NetrayVpnService.state.collectAsStateWithLifecycle()
     val proxyState by NetrayProxyService.state.collectAsStateWithLifecycle()
@@ -711,6 +712,11 @@ private fun NetrayScreen() {
                     onBypassLanChange = { enabled ->
                         bypassLan = enabled
                         settings.edit().putBoolean("bypass_lan", enabled).apply()
+                    },
+                    ipv6Enabled = ipv6Enabled,
+                    onIpv6EnabledChange = { enabled ->
+                        ipv6Enabled = enabled
+                        settings.edit().putBoolean("ipv6_enabled", enabled).apply()
                     },
                     accentColor = accentColor,
                     onAccentColorChange = { checked ->

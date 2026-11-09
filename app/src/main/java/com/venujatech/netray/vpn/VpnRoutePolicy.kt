@@ -10,9 +10,19 @@ object VpnRoutePolicy {
         "fc00::/7", "fe80::/10", "ff00::/8"
     )
 
-    fun includedRoutes(bypassLan: Boolean): List<String> = if (bypassLan) {
-        complement(32, lanExclusions.filterNot { ':' in it }) + complement(128, lanExclusions.filter { ':' in it })
-    } else listOf("0.0.0.0/0", "::/0")
+    fun androidExcludeRoutes(ipv6Enabled: Boolean): List<String> = lanExclusions
+        .filter { ipv6Enabled || ':' !in it }
+        // Loopback is already local, and Android rejects it as an excluded VPN route.
+        .filterNot { it == "127.0.0.0/8" }
+
+    fun includedRoutes(bypassLan: Boolean, ipv6Enabled: Boolean = true): List<String> = buildList {
+        if (bypassLan) addAll(complement(32, lanExclusions.filterNot { ':' in it }))
+        else add("0.0.0.0/0")
+        if (ipv6Enabled) {
+            if (bypassLan) addAll(complement(128, lanExclusions.filter { ':' in it }))
+            else add("::/0")
+        }
+    }
 
     fun contains(cidr: String, address: String): Boolean {
         val prefix = parse(cidr) ?: return false

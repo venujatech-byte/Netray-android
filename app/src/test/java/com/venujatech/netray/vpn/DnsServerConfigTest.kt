@@ -17,4 +17,13 @@ class DnsServerConfigTest {
     fun formatsIpv6EndpointForLibXray() {
         assertEquals("[2001:4860:4860::8888]:53", DnsServerConfig.endpoint("2001:4860:4860::8888"))
     }
+
+    @Test
+    fun disabledIpv6UsesOnlyIpv4DnsAndFallsBackWhenNeeded() {
+        assertEquals(listOf("1.1.1.1"), DnsServerConfig.activeServers("2001:4860:4860::8888", "1.1.1.1", false))
+        assertEquals(
+            listOf(DnsServerConfig.DEFAULT_PRIMARY, DnsServerConfig.DEFAULT_SECONDARY),
+            DnsServerConfig.activeServers("2001:4860:4860::8888", "2606:4700:4700::1001", false)
+        )
+    }
 }

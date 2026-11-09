@@ -56,6 +56,8 @@ fun SettingsScreen(
     onDnsServersChange: (String, String) -> Unit,
     bypassLan: Boolean,
     onBypassLanChange: (Boolean) -> Unit,
+    ipv6Enabled: Boolean,
+    onIpv6EnabledChange: (Boolean) -> Unit,
     accentColor: String,
     onAccentColorChange: (String) -> Unit,
     vpnBusy: Boolean,
@@ -207,6 +209,29 @@ fun SettingsScreen(
                         )
                         Text(
                             "Disconnect before changing. The setting applies when you connect again.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            item(key = "ipv6") {
+                SettingsCard(title = "IPv6") {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SwitchRow(
+                            title = "Enable IPv6 addresses",
+                            subtitle = "Route IPv6 traffic through the VPN in TUN mode.",
+                            checked = ipv6Enabled,
+                            enabled = !connected && !vpnBusy,
+                            onCheckedChange = onIpv6EnabledChange
+                        )
+                        Text(
+                            when {
+                                connected -> "Disconnect before changing. The setting applies when you connect again."
+                                ipv6Enabled -> "When disabled, IPv6 traffic is blocked; IPv4 sites and apps can still connect."
+                                else -> "IPv6 is disabled for TUN mode. IPv6-only destinations will not be reachable."
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

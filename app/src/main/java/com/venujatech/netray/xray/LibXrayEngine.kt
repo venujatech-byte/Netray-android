@@ -46,11 +46,13 @@ class LibXrayEngine(private val context: Context, private val service: VpnServic
         ensureDialerRegistered()
         LibXray.registerProcessFinder(ProcessFinder { _, _, _, _, _ -> -1L }, Build.VERSION.SDK_INT.toLong())
         val preferences = context.getSharedPreferences("settings", 0)
-        val primaryDns = DnsServerConfig.normalize(preferences.getString("dns_primary", null).orEmpty())
+        val configuredPrimaryDns = DnsServerConfig.normalize(preferences.getString("dns_primary", null).orEmpty())
             ?: DnsServerConfig.DEFAULT_PRIMARY
-        val secondaryDns = DnsServerConfig.normalize(preferences.getString("dns_secondary", null).orEmpty())
+        val configuredSecondaryDns = DnsServerConfig.normalize(preferences.getString("dns_secondary", null).orEmpty())
             ?: DnsServerConfig.DEFAULT_SECONDARY
-        LibXray.setDNS(VpnDialerController, DnsServerConfig.endpoint(primaryDns))
+        val ipv6Enabled = mode != TunnelMode.TUN || preferences.getBoolean("ipv6_enabled", true)
+        val dnsServers = DnsServerConfig.activeServers(configuredPrimaryDns, configuredSecondaryDns, ipv6Enabled)
+        LibXray.setDNS(VpnDialerController, DnsServerConfig.endpoint(dnsServers.first()))
         val converted = invoke("convertShareLinksToXrayJson", JSONObject().put("text", link)).getJSONObject("data")
         val outbounds = converted.getJSONArray("outbounds")
         val allowInsecure = context.getSharedPreferences("settings", 0).getBoolean("allow_insecure_tls", false)
@@ -82,8 +84,17 @@ class LibXrayEngine(private val context: Context, private val service: VpnServic
             }
         }
         require(!config.has("error")) { config.optString("error", "Could not prepare Xray config") }
+        if (mode == TunnelMode.TUN && !ipv6Enabled) {
+            val inbounds = config.optJSONArray("inbounds")
+            for (index in 0 until (inbounds?.length() ?: 0)) {
+                val inbound = inbounds?.optJSONObject(index) ?: continue
+                val settings = inbound.optJSONObject("settings") ?: continue
+                val gateway = settings.optJSONArray("gateway") ?: continue
+                if (gateway.length() > 1) settings.put("gateway", JSONArray().put(gateway.opt(0)))
+            }
+        }
         val dns = config.optJSONObject("dns") ?: JSONObject().also { config.put("dns", it) }
-        dns.put("servers", JSONArray().put(primaryDns).put(secondaryDns))
+        dns.put("servers", JSONArray(dnsServers))
         WhitelistEnforcer.addDirectRouting(config, whitelist, host)
         invoke("runXray", JSONObject().put("xrayJson", config.toString()))
     }

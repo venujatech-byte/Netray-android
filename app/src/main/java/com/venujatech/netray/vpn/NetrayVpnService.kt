@@ -94,20 +94,24 @@ class NetrayVpnService : VpnService() {
                         ?: DnsServerConfig.DEFAULT_PRIMARY
                     val secondaryDns = DnsServerConfig.normalize(preferences.getString("dns_secondary", null).orEmpty())
                         ?: DnsServerConfig.DEFAULT_SECONDARY
+                    val ipv6Enabled = preferences.getBoolean("ipv6_enabled", true)
+                    val dnsServers = DnsServerConfig.activeServers(primaryDns, secondaryDns, ipv6Enabled)
                     val bypassLan = preferences.getBoolean("bypass_lan", false)
                     val builder = Builder().setSession("Netray").setMtu(1500)
-                        .addAddress("10.0.0.2", 30).addAddress("fd00::2", 126)
+                        .addAddress("10.0.0.2", 30)
+                    if (ipv6Enabled) builder.addAddress("fd00::2", 126)
                     if (bypassLan && Build.VERSION.SDK_INT >= 33) {
-                        builder.addRoute("0.0.0.0", 0).addRoute("::", 0)
+                        builder.addRoute("0.0.0.0", 0)
+                        if (ipv6Enabled) builder.addRoute("::", 0)
                     } else {
-                        VpnRoutePolicy.includedRoutes(bypassLan).forEach { route ->
+                        VpnRoutePolicy.includedRoutes(bypassLan, ipv6Enabled).forEach { route ->
                             val (address, prefix) = route.split('/')
                             builder.addRoute(InetAddress.getByName(address), prefix.toInt())
                         }
                     }
-                    builder.addDnsServer(primaryDns).addDnsServer(secondaryDns)
+                    dnsServers.forEach(builder::addDnsServer)
                     if (bypassLan && Build.VERSION.SDK_INT >= 33) {
-                        VpnRoutePolicy.lanExclusions.forEach { route ->
+                        VpnRoutePolicy.androidExcludeRoutes(ipv6Enabled).forEach { route ->
                             val (address, prefix) = route.split('/')
                             builder.excludeRoute(IpPrefix(InetAddress.getByName(address), prefix.toInt()))
                         }

@@ -20,4 +20,10 @@ object DnsServerConfig {
     }
 
     fun endpoint(address: String): String = if (':' in address) "[$address]:53" else "$address:53"
+
+    fun activeServers(primary: String, secondary: String, ipv6Enabled: Boolean): List<String> {
+        val servers = listOf(primary, secondary).mapNotNull(::normalize).distinct()
+            .filter { ipv6Enabled || ':' !in it }
+        return servers.ifEmpty { listOf(DEFAULT_PRIMARY, DEFAULT_SECONDARY) }
+    }
 }
